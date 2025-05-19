@@ -10,13 +10,10 @@ Official implementation of RIPT-VLA. Parts of the repo is build on a fork of [Qu
   <img src="image/teaser.png" width="100%" alt="RIPT-VLA overview">
 </p>
 
-| [📝 Paper *(TODO)*](TODO) | [🌐 Website](https://ariostgx.github.io/ript_vla/) |
-| --- | --- |
+[📝 Paper *(TODO)*](TODO) | [🌐 Website](https://ariostgx.github.io/ript_vla/)
 
 **Authors:** *Shuhan Tan, Kairan Dou, Yue Zhao, Philipp Krähenbühl*  
 **Contact:** \<shuhan@utexas.edu\>
-
----
 
 ## 🔥 Highlights
 * **Plug-and-Play Post-Training** – fine-tune *any* VLA model with only task-success signals (no dense rewards, no value nets).  
@@ -32,8 +29,6 @@ Official implementation of RIPT-VLA. Parts of the repo is build on a fork of [Qu
 5. [Core RIPT Code Overview](#🧪-core-ript-code-overview)
 6. [Citation](#📖-citation)
 7. [Acknowledgement](#🙏-acknowledgement)
-
----
 
 ## 📢 News
 *2025-05*  Initial code release v0.1.0!
@@ -96,8 +91,6 @@ The script will:
 
 For complete details of the training process, see the [Quest + RIPT Training](#🏋️-quest-ript-training) section.
 
----
-
 
 ## 🤗 Model Zoo
 All checkpoints are hosted at HuggingFace Model Hub: https://huggingface.co/tanshh97/RIPT_VLA/tree/main
@@ -128,8 +121,6 @@ We provide both pre-trained and SFTed OpenVLA-OFT checkpoints for LIBERO-Suites:
 | LIBERO-SPATIAL | OpenVLA-OFT     | [Download](https://huggingface.co/tanshh97/RIPT_VLA/blob/main/openvla_oft/scale_header/LIBERO_SPATIAL_scale_header.pth)| [Download](https://huggingface.co/tanshh97/RIPT_VLA/tree/main/openvla_oft/ript_adaptors/LIBERO_SPATIAL_lora) |
 
 Laplace Scale Head are around 300MB and RIPT LoRA Adaptor + Header are around 1GB.
-
----
 
 ## 🏋️ Quest RIPT Training
 
@@ -186,8 +177,6 @@ Key flags:
 bash scripts/quest/eval/libero_90.sh $NUM_GPU
 ```
 
-
----
 
 ## 🏋️ OpenVLA-OFT RIPT Training
 
@@ -269,8 +258,6 @@ bash scripts/openvla_oft/eval/libero_long.sh $NUM_GPU
 1. Implement the `ModelAdapter` for the new model following the current `ModelAdapter` interface.
 2. Implement the `LiberoRunner_rl` for the new model to cache model context for action log probability computation. For example, `LiberoRunner_rl` caches the context tokens and output action indices for QueST.
 3. Add the new model and RIPT config following the existing `quest_rl.yaml` and `openvla_oft_rl.yaml` format.
-
----
 
 
 ## 📖 Citation
