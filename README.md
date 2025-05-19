@@ -1,7 +1,7 @@
 # 💪 RIPT-VLA
 
 **Interactive Post-Training for Vision-Language-Action Models**  
-Official implementation of RIPT-VLA. Parts of the repo is build on a fork of [QueST](https://quest-model.github.io).
+Official implementation of RIPT-VLA. Parts of the repo is built on a fork of [QueST](https://quest-model.github.io).
 
 > **RIPT-VLA** improves *any* pretrained VLA backbone (e.g., **QueST**, **OpenVLA-OFT**) using only **sparse binary success rewards**.  
 > Through **K-rollout interaction**, **dynamic sampling**, and **leave-one-out advantage estimation**, we reach state-of-the-art success rates and successful in extremely low-data regimes.
