@@ -95,7 +95,7 @@ For complete details of the training process, see the [Quest + RIPT Training](#ð
 ## ðŸ¤— Model Zoo
 All checkpoints are hosted at HuggingFace Model Hub: https://huggingface.co/tanshh97/RIPT_VLA/tree/main
 
-## QueST Checkpoints
+### QueST Checkpoints
 
 We provide both SFT and RIPT checkpoints for QueST on multiple LIBERO suites:
 
@@ -109,7 +109,7 @@ We provide both SFT and RIPT checkpoints for QueST on multiple LIBERO suites:
 
 All models are ~80MB.
 
-## OpenVLA-OFT Checkpoints
+### OpenVLA-OFT Checkpoints
 
 We provide both pre-trained and SFTed OpenVLA-OFT checkpoints for LIBERO-Suites:
 
