@@ -1,0 +1,52 @@
+defaults:
+  - train_base_rl_openvla_oft
+  - _self_
+  - override reward_function: success
+  - override task: libero_object
+
+exp_name: openvla_oft_all_task_object
+
+algo:
+  rloo_batch_size: 8
+  rollouts_per_env: 50
+  use_laplace_sampling: true
+  
+  use_val_init: false
+  mix_val_init_in_rloo: false
+  rloo_over_all_rollouts: false
+  num_ppo_epochs: 1
+  gradient_accumulation_steps: 4 # ppo_batch = 4 * 4 (GPU) = 16
+  max_step_batch_size: 1
+
+  # num_parallel_envs: 4
+  num_parallel_envs: 1
+  max_episode_length: null
+
+  fix_scale_head: true
+  scale_factor: 5.0
+  ppo_clip_range: 0.1
+  ppo_clip_high: 0.1
+  log_scale_clip: [-2.0,0.5]
+  log_prob_mode: 'sum_on_action_dim'
+  lr: 5e-5
+  header_lr: 5e-5
+
+  enable_dynamic_sampling: true
+
+  checkpoint_path: null
+  header_checkpoint: null
+  lora_adaptor_ckpt: null
+
+task:
+  task_names_to_use: null
+
+train_dataloader:
+  batch_size: 6
+  shuffle: true
+
+training:
+  n_steps: 6
+  rollout_steps: 1
+
+rollout:
+  enabled: true

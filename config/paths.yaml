@@ -1,0 +1,6 @@
+paths:
+  output_prefix: /storage/Models/shuhan/quest/experiments
+  data_prefix: /storage/Datasets
+  
+common:
+  wandb_project: ript-vla 

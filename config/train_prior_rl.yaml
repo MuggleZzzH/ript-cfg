@@ -1,0 +1,59 @@
+defaults:
+  - train_base_rl
+  - reward_function: success
+  - _self_
+
+stage: 1 # 0 - pretrain autoencoder, 1 - train multitask, 2 - finetune multitask
+
+logging_folder: prior
+
+device: cuda
+seed: 0
+
+training:
+  n_epochs: 20 # on libero: 20 for quest and 100 for other algos, 100 on metaworld for all algos
+  n_steps: 26 # -1 if you want to train for n_epochs, otherwise train for n_steps
+  rollout_steps: 2 # -1 if use rollout.interval, otherwise use rollout_steps
+  auto_continue: false
+  grad_clip: 1.0
+
+rollout:
+  enabled: true
+  interval: 25
+  rollouts_per_env: 48
+  num_parallel_envs: 4 # 5 recommended for libero, 1 for metaworld
+
+# train_dataloader:
+#   batch_size: 4
+#   shuffle: true
+
+dataset:
+  seq_len: 600
+  frame_stack: 1 # this denotes past timestep observations and actions
+  obs_seq_len: 1 # this denotes future timestep image observations
+  lowdim_obs_seq_len: null # this denotes future timestep lowdim observations
+  load_obs_for_pretrain: true # since autoencoder training stage does not require obs
+  load_next_obs: true # you know this
+  get_pad_mask: true
+  load_state: true
+
+algo:
+  rloo_batch_size: 8
+  ppo_batch_size: 4
+  num_ppo_epochs: 20
+  ppo_clip_range: 0.2
+  kl_coef: 0.05
+  ppo_clip_high: 0.2
+  lr: 1e-6
+  enable_dynamic_sampling: true
+  early_stop_porcentage: 0.8
+  use_token_level_loss_avg: true
+  dataset:
+    pad_seq_length: false
+
+task:
+  task_names_to_use: null  
+  env_runner:
+    num_parallel_envs: 2
+
+ref_model_checkpoint_path: null
