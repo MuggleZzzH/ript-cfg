@@ -1,7 +1,7 @@
 # 💪 RIPT-VLA
 
 **Interactive Post-Training for Vision-Language-Action Models**  
-Official implementation of RIPT-VLA. Parts of the repo is built on a fork of [QueST](https://quest-model.github.io).
+Official implementation of RIPT-VLA. Parts of the repo are built on a fork of [QueST](https://quest-model.github.io).
 
 > **RIPT-VLA** improves *any* pretrained VLA backbone (e.g., **QueST**, **OpenVLA-OFT**) using only **sparse binary success rewards**.  
 > Through **K-rollout interaction**, **dynamic sampling**, and **leave-one-out advantage estimation**, we reach state-of-the-art success rates and successful in extremely low-data regimes.
@@ -10,7 +10,7 @@ Official implementation of RIPT-VLA. Parts of the repo is built on a fork of [Qu
   <img src="image/teaser.png" width="100%" alt="RIPT-VLA overview">
 </p>
 
-[📝 Paper *(TODO)*](TODO) | [🌐 Website](https://ariostgx.github.io/ript_vla/)
+[📝 Paper](https://www.arxiv.org/abs/2505.17016) | [🌐 Website](https://ariostgx.github.io/ript_vla/)
 
 **Authors:** *Shuhan Tan, Kairan Dou, Yue Zhao, Philipp Krähenbühl*  
 **Contact:** \<shuhan@utexas.edu\>
@@ -265,15 +265,15 @@ bash scripts/openvla_oft/eval/libero_long.sh $NUM_GPU
 If you find this work useful, please cite:
 
 ```bibtex
-@misc{tan2025interactive,
-      title={Interactive Post-Training for Vision-Language-Action Models},
-      author={Tan, Shuhan and Dou, Kairan and Zhao, Yue and Kr{\"a}henb{\"u}hl, Philipp},
+@misc{tan2025interactiveposttrainingvisionlanguageactionmodels,
+      title={Interactive Post-Training for Vision-Language-Action Models}, 
+      author={Shuhan Tan and Kairan Dou and Yue Zhao and Philipp Krähenbühl},
       year={2025},
-      eprint={2505.XXXXX},
+      eprint={2505.17016},
       archivePrefix={arXiv},
-      primaryClass={cs.RO},
-      note={\url{https://arxiv.org/abs/2505.XXXXX}}
-    }
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2505.17016}, 
+}
 ```
 
 
