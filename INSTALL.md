@@ -20,8 +20,8 @@ python -m pip install torch==2.2.0 torchvision==0.17.0
 
 ### Install dependency (mostly inherited from QueST)
 ```
-git clone https://github.com/Ariostgx/RPIT_VLA.git
-cd RIPT_VLA
+git clone https://github.com/Ariostgx/ript-vla.git
+cd ript-vla
 python -m pip install -e .
 ```
 
@@ -67,7 +67,7 @@ pip install accelerate==1.6.0
 
 ### Install RIPT-VLA dependency
 ```
-cd RIPT_VLA
+cd ript-vla
 python -m pip install -e .
 ```
 
