@@ -17,7 +17,7 @@ Official implementation of RIPT-VLA. Parts of the repo are built on a fork of [Q
 
 ## 🔥 Highlights
 * **Plug-and-Play Post-Training** – fine-tune *any* VLA model with only task-success signals (no dense rewards, no value nets).  
-* **SOTA-performance** – **94.3%** success rate on LIBERO-90 with QueST + RIPT; **97.6** success rate on LIBERO Suites (Goal, Spatial, Object, Long) with OpenVLA-OFT + RIPT.
+* **SOTA-performance** – **94.3%** success rate on LIBERO-90 with QueST + RIPT; **97.5** success rate on LIBERO Suites (Goal, Spatial, Object, Long) with OpenVLA-OFT + RIPT.
 * **Low-data Regime** – Extreme Low-Data Success – RIPT-VLA turns failure-prone models (e.g., 4% success with 1 demo) into performant agents (**97+**) using only sparse binary rewards and just 15 iterations.
 
 ## 📚 Table of Contents
