@@ -2,6 +2,7 @@ from pathlib import Path
 import os
 import sys
 import torch
+from torch import nn
 from peft import LoraConfig, get_peft_model
 from typing import Optional, Union, Tuple
 from transformers.models.llama.modeling_llama import apply_rotary_pos_emb, repeat_kv
@@ -157,12 +158,33 @@ from experiments.robot.robot_utils import (
     get_model,
     set_seed_everywhere,
 )
-from prismatic.vla.constants import NUM_ACTIONS_CHUNK
-from prismatic.models.action_heads import LaplaceScaleHead
-
+from prismatic.vla.constants import ACTION_DIM, NUM_ACTIONS_CHUNK
+from prismatic.models.action_heads import MLPResNet
 
 from dataclasses import dataclass
 DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+class LaplaceScaleHead(nn.Module):
+    def __init__(self, input_dim=4096, hidden_dim=4096, action_dim=7):
+        super().__init__()
+        self.trunk = MLPResNet(
+            num_blocks=2,
+            input_dim=input_dim * ACTION_DIM,
+            hidden_dim=hidden_dim,
+            output_dim=hidden_dim,
+        )
+        self.log_b_head = nn.Linear(hidden_dim, action_dim)
+        nn.init.constant_(self.log_b_head.bias, -3.0)
+        nn.init.xavier_uniform_(self.log_b_head.weight, gain=0.01)
+        print("LaplaceScaleHead init used")
+
+    def forward(self, actions_hidden_states):
+        B = actions_hidden_states.size(0)
+        x = actions_hidden_states.reshape(B, NUM_ACTIONS_CHUNK, -1)  # (B,chunk,4096*7)
+        h = self.trunk(x)                                            # (B, hidden_dim)
+        log_b = self.log_b_head(h)                                   # (B, 7)
+        return log_b
+
 
 @dataclass
 class GenerateConfig:
