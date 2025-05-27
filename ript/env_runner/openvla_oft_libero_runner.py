@@ -12,7 +12,6 @@ from libero.libero import benchmark
 from libero.libero import get_libero_path
 from libero.libero.envs import OffScreenRenderEnv, SubprocVectorEnv
 
-sys.path.append('/u/shuhan/projects/')
 from experiments.robot.libero.libero_utils import (
     get_libero_dummy_action,
     get_libero_env,

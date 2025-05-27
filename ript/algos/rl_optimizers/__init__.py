@@ -6,6 +6,7 @@ from ript.algos.rl_optimizers.file_counter import (
     reset_global_counter,
     cleanup_counter,
 )
+from ript.algos.rl_optimizers import openvla_oft_interface
 
 __all__ = [
     "QuestModelAdapter",
@@ -15,4 +16,5 @@ __all__ = [
     "setup_file_counter",
     "reset_global_counter",
     "cleanup_counter",
+    "openvla_oft_interface"
 ] 

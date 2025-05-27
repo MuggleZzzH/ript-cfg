@@ -147,7 +147,6 @@ def sdpa_forward_patched(
 print('Patching LlamaSdpaAttention.forward with custom forward')
 LlamaSdpaAttention.forward = sdpa_forward_patched
 
-sys.path.append('/u/shuhan/projects/')
 from experiments.robot.openvla_utils import (
     get_action_head,
     get_noisy_action_projector,
