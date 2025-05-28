@@ -171,6 +171,7 @@ def main(cfg):
     print(f'[RANK {rank}] Conducting rollout evaluation')
     rollout_results = env_runner.run(model.module, n_video=0, do_tqdm=train_cfg.use_tqdm) 
     print(f'[RANK {rank}] Rollout results: {rollout_results}')
+    global_step = 0
     sync_rollout_results_via_file(rollout_results, logger, global_step)
 
     # Set up RL optimizer components
