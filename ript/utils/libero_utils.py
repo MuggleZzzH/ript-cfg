@@ -395,10 +395,8 @@ def get_task_embs(task_embedding_format, descriptions):
         )
         task_embs = model(**tokens)["last_hidden_state"].detach()[:, -1]
     elif task_embedding_format == "clip":
-        # tz = AutoTokenizer.from_pretrained("openai/clip-vit-base-patch32", clean_up_tokenization_spaces=True)
-        # model = AutoModel.from_pretrained("openai/clip-vit-base-patch32")
-        tz = AutoTokenizer.from_pretrained("/storage/Models/shuhan/llms/clip-vit-base-patch32", clean_up_tokenization_spaces=True)
-        model = AutoModel.from_pretrained("/storage/Models/shuhan/llms/clip-vit-base-patch32")
+        tz = AutoTokenizer.from_pretrained("openai/clip-vit-base-patch32", clean_up_tokenization_spaces=True)
+        model = AutoModel.from_pretrained("openai/clip-vit-base-patch32")
         tokens = tz(
             text=descriptions,  # the sentence to be encoded
             add_special_tokens=True,  # Add [CLS] and [SEP]
