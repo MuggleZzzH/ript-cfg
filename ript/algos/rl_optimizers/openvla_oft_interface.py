@@ -281,11 +281,20 @@ def initialize_model(cfg: GenerateConfig):
 
     if cfg.pretrained_head_checkpoint:
         print("Loading pretrained scale header checkpoint from ", cfg.pretrained_head_checkpoint)
-        weights = torch.load(cfg.pretrained_head_checkpoint, map_location='cpu')
-        scale_head.trunk.load_state_dict(weights['scale_trunk'])
-        scale_head.log_b_head.load_state_dict(weights['log_b_head'])
+        with torch.no_grad():
+            weights = torch.load(cfg.pretrained_head_checkpoint, map_location='cpu')
+            scale_head.trunk.load_state_dict(weights['scale_trunk'])
+            scale_head.log_b_head.load_state_dict(weights['log_b_head'])
+            del weights
+            torch.cuda.empty_cache()
 
     scale_head = scale_head.to(torch.bfloat16).to(model.device)
+
+    # Add memory tracking
+    if torch.cuda.is_available():
+        device = model.device if hasattr(model, 'device') else torch.cuda.current_device()
+        print(f"GPU memory allocated: {torch.cuda.memory_allocated(device)/1024**3:.2f} GB")
+        print(f"GPU memory reserved: {torch.cuda.memory_reserved(device)/1024**3:.2f} GB")
 
     return model, action_head, scale_head, proprio_projector, noisy_action_projector, processor
 
@@ -311,7 +320,7 @@ class OpenVLA_OFT_Policy:
         target_modules="all-linear",
         init_lora_weights="gaussian",
     )
-    model, action_head, scale_head, proprio_projector, _, processor = initialize_model(cfg)
+    model, action_head, scale_head, proprio_projector, noisy_action_projector, processor = initialize_model(cfg)
     self.processor = processor
     self.action_head = action_head
     self.scale_head = scale_head
@@ -319,6 +328,9 @@ class OpenVLA_OFT_Policy:
     self.cfg = cfg
     self.log_scale_clip = log_scale_clip
     cfg.log_scale_clip = log_scale_clip
+    
+    # Delete unused component
+    del noisy_action_projector
 
     if lora_adaptor_ckpt is not None:
         adaptor_path = lora_adaptor_ckpt
@@ -332,8 +344,13 @@ class OpenVLA_OFT_Policy:
         self.scale_head.load_state_dict(header_weights['scale_header'])
         print('Loaded action header and scale header weights from ', header_path)
         del header_weights
+        torch.cuda.empty_cache()
     else:
         self.model = get_peft_model(model, lora_config)
+    
+    # Delete the base model reference after PEFT wrapping
+    del model
+    torch.cuda.empty_cache()
 
     self.model.print_trainable_parameters()
     self.device = self.model.device
@@ -357,3 +374,10 @@ class OpenVLA_OFT_Policy:
        self.action_head = torch.nn.parallel.DistributedDataParallel(self.action_head, device_ids=[device_id])
        self.scale_head = torch.nn.parallel.DistributedDataParallel(self.scale_head, device_ids=[device_id])
        self.proprio_projector = torch.nn.parallel.DistributedDataParallel(self.proprio_projector, device_ids=[device_id])
+    
+    # Final memory tracking
+    if torch.cuda.is_available():
+        # Fix device specification for memory tracking
+        device = torch.device(f'cuda:{device_id}' if isinstance(device_id, int) else self.device)
+        print(f"Final GPU memory allocated: {torch.cuda.memory_allocated(device)/1024**3:.2f} GB")
+        print(f"Final GPU memory reserved: {torch.cuda.memory_reserved(device)/1024**3:.2f} GB")
