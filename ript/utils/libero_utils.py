@@ -361,7 +361,12 @@ class SequenceVLDataset(Dataset):
 
 def get_task_embs(task_embedding_format, descriptions):
     logging.set_verbosity_error()
-    if task_embedding_format == "bert":
+    if task_embedding_format == "none":
+        # 返回零向量，不依赖任何外部模型（推荐用于PI0）
+        dummy_emb_dim = 512  # 兼容下游期望的嵌入维度
+        task_embs = torch.zeros((len(descriptions), dummy_emb_dim), dtype=torch.float32)
+        return task_embs
+    elif task_embedding_format == "bert":
         tz = AutoTokenizer.from_pretrained(
             "bert-base-cased", cache_dir=to_absolute_path("./bert")
         )

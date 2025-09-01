@@ -15,7 +15,6 @@ import sys
 
 import torch
 from torch import nn
-from safetensors.torch import load_file
 
 
 def _ensure_openpi_on_path(workspace_root: Optional[str] = None) -> None:
@@ -52,12 +51,12 @@ class PI0_OFT_Policy:
         # 1) Load PI0 policy (默认路径可后续在服务器替换)
         try:
             if pretrained_path and Path(pretrained_path).exists():
-                # 先用本地tokenizer路径创建实例，然后加载权重
-                config = PI0Policy.config_class()
-                self.model = PI0Policy(config, tokenizer_path=str(pretrained_path))
-                # 加载预训练权重（使用safetensors格式）
-                checkpoint = load_file(Path(pretrained_path) / "model.safetensors")
-                self.model.load_state_dict(checkpoint, strict=False)
+                # 直接使用PI0模型目录中的tokenizer（更加匹配）
+                self.model = PI0Policy.from_pretrained(
+                    pretrained_path,
+                    tokenizer_path=str(pretrained_path),
+                    local_files_only=True  # 确保完全本地加载，不联网
+                )
             else:
                 # 冷启动（无预训练权重时）
                 self.model = PI0Policy(PI0Policy.config_class())
@@ -143,14 +142,16 @@ class PI0_OFT_Policy:
         base = observation["image"]["base_0_rgb"]
         wrist = observation["image"].get("left_wrist_0_rgb", None)
 
-        # HWC uint8 -> NCHW uint8 tensor
+        # HWC uint8 -> BCHW uint8 tensor  
         def to_nchw_uint8(x):
             if isinstance(x, torch.Tensor):
                 t = x
             else:
                 t = torch.as_tensor(x)
-            if t.ndim == 3:  # (H, W, C)
-                t = t.permute(2, 0, 1)
+            if t.ndim == 3:  # (H, W, C) -> add batch dim -> (1, C, H, W)
+                t = t.permute(2, 0, 1).unsqueeze(0)  # Add batch dimension
+            elif t.ndim == 4:  # Already (B, H, W, C) -> (B, C, H, W)
+                t = t.permute(0, 3, 1, 2)
             return t.to(device=device, dtype=torch.uint8)
 
         batch["image"]["base_0_rgb"] = to_nchw_uint8(base)
@@ -160,7 +161,12 @@ class PI0_OFT_Policy:
         state = observation["state"]
         if not isinstance(state, torch.Tensor):
             state = torch.as_tensor(state)
-        batch["state"] = state.to(device=device, dtype=torch.float32)
+        state = state.to(device=device, dtype=torch.float32)
+        
+        # 确保 state 有 batch 维度：(8,) -> (1, 8)
+        if state.ndim == 1:
+            state = state.unsqueeze(0)
+        batch["state"] = state
 
         # 语言
         if batch["prompt"] is None:

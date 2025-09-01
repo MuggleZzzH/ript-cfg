@@ -205,7 +205,8 @@ class PaliGemmaWithExpertModel(PreTrainedModel):
         return self.paligemma.get_image_features(image)
 
     def embed_language_tokens(self, tokens: torch.Tensor):
-        return self.paligemma.language_model.model.embed_tokens(tokens)
+        # In recent transformers, `paligemma.language_model` is already a GemmaModel (no nested `.model`).
+        return self.paligemma.language_model.embed_tokens(tokens)
 
     def handle_kv_cache(
         self,
@@ -264,7 +265,8 @@ class PaliGemmaWithExpertModel(PreTrainedModel):
             past_key_values (Optional[Union[List[torch.FloatTensor], Cache]]):
                 Optional kv cache.
         """
-        models = [self.paligemma.language_model.model, self.gemma_expert.model]
+        # `paligemma.language_model` is a GemmaModel; `gemma_expert.model` is the base GemmaModel.
+        models = [self.paligemma.language_model, self.gemma_expert.model]
 
         # RMSNorm
         num_layers = self.paligemma.config.text_config.num_hidden_layers

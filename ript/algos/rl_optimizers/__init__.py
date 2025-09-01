@@ -6,15 +6,15 @@ from ript.algos.rl_optimizers.file_counter import (
     reset_global_counter,
     cleanup_counter,
 )
-from ript.algos.rl_optimizers import openvla_oft_interface
+# from ript.algos.rl_optimizers import openvla_oft_interface  # 注释掉避免peft依赖
 
 __all__ = [
     "QuestModelAdapter",
-    "RLModelInterface",
+    "RLModelInterface", 
     "RolloutGenerator",
     "RLOptimizer",
     "setup_file_counter",
     "reset_global_counter",
     "cleanup_counter",
-    "openvla_oft_interface"
+    # "openvla_oft_interface"  # PI0不需要
 ] 
