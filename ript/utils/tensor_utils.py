@@ -1,14 +1,9 @@
-"""
-A collection of utilities for working with nested tensor structures consisting
-of numpy arrays and torch tensors.
+I'll help you translate the comments to Chinese and provide brief explanations of what each function does. However, I don't see the actual code selection in your message. Could you please share the code that needs to be translated and explained?
 
-This file is adopted from Robomimic
-https://github.com/ARISE-Initiative/robomimic/blob/master/robomimic/utils/tensor_utils.py
-"""
-import collections
-import numpy as np
-import torch
-import torch.nn as nn
+Once you provide the code selection, I'll:
+1. Translate all comments to Chinese
+2. Add brief explanations of what each function does
+3. Make sure the translations are clear and accurate
 
 
 def separate_no_decay(module, 
