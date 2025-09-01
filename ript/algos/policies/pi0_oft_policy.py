@@ -172,8 +172,26 @@ class PI0_OFT_Policy:
         if batch["prompt"] is None:
             batch["prompt"] = [""] * batch["state"].shape[0]
 
+        # 可控轻量日志
+        _verbose = os.environ.get("PI0_VERBOSE", "0") == "1"
+        if _verbose:
+            bsz = batch["state"].shape[0]
+            h, w = batch["image"]["base_0_rgb"].shape[-2:]
+            print(f"[PI0] infer start | B={bsz}, HxW={h}x{w}")
+        start_ts = torch.cuda.Event(enable_timing=True) if torch.cuda.is_available() else None
+        end_ts = torch.cuda.Event(enable_timing=True) if torch.cuda.is_available() else None
+        if start_ts is not None:
+            start_ts.record()
+
         # PI0 前向：得到 (B, 50, D)，截取前7维为动作维度
         actions = self.model.select_action(batch)
+
+        if end_ts is not None:
+            end_ts.record()
+            torch.cuda.synchronize()
+            ms = start_ts.elapsed_time(end_ts)
+            if _verbose:
+                print(f"[PI0] infer done  | latency={ms:.1f} ms")
         if isinstance(actions, torch.Tensor):
             act = actions
         else:
@@ -182,6 +200,8 @@ class PI0_OFT_Policy:
 
         # 仅取前 7 维作为可执行动作（标准化）
         act = act[..., :7]
+        if _verbose:
+            print(f"[PI0] action shape={tuple(act.shape)} (B,50,7)")
         return act
 
 

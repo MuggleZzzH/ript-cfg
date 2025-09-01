@@ -4,6 +4,7 @@ PI0 Libero runner with open-loop=50 execution and episode fields aligned with ro
 """
 
 from typing import Any, Dict, Iterable, List, Tuple
+import os
 import numpy as np
 import math
 from collections import deque
@@ -23,6 +24,7 @@ class Pi0LiberoRunner:
         num_parallel_envs: int = 1,
         max_episode_length: int | None = None,
         task_names_to_use: List[str] | None = None,
+        num_steps_wait: int = 10,  # 额外等待步数
         **kwargs: Any,
     ) -> None:
         self.benchmark_name = benchmark_name
@@ -30,6 +32,7 @@ class Pi0LiberoRunner:
         self.num_parallel_envs = num_parallel_envs
         self.max_episode_length = max_episode_length or 300
         self.task_names_to_use = task_names_to_use or []
+        self.num_steps_wait = num_steps_wait
 
         # Fallback stats; real values应由 policy.norm_stats 注入runner调用处
         self.state_mean = np.zeros(8, dtype=np.float32)
@@ -88,7 +91,18 @@ class Pi0LiberoRunner:
     def create_env(self, env_name: str):
         # 基于 LIBERO bddl 创建并行环境
         bench_dict = libero_benchmark.get_benchmark_dict()
-        bench = bench_dict[self.benchmark_name]()
+        # 尝试不同的键名格式：原名、小写、去掉前缀
+        benchmark_key = None
+        for key in [self.benchmark_name, self.benchmark_name.lower(), 
+                   self.benchmark_name.replace('LIBERO_', '').lower()]:
+            if key in bench_dict:
+                benchmark_key = key
+                break
+        
+        if benchmark_key is None:
+            raise KeyError(f"Benchmark '{self.benchmark_name}' not found. Available: {list(bench_dict.keys())}")
+        
+        bench = bench_dict[benchmark_key]()
         self._bench = bench
         self.env_names = bench.get_task_names()
         task_id = self.env_names.index(env_name)
@@ -200,7 +214,16 @@ class Pi0LiberoRunner:
                         'state': np.stack([o['state'] for o in obs_list], axis=0),
                         'prompt': [task_description]*len(obs_list),
                     }
+                    _verbose = os.environ.get('PI0_VERBOSE', '0') == '1'
+                    if _verbose:
+                        print(f"[Runner] t={t} | need_infer={len(need_infer_ids)} | building batch...")
                     norm_actions = policy.select_action(batch_obs)
+                    if _verbose:
+                        try:
+                            shape_info = tuple(norm_actions.shape) if hasattr(norm_actions, 'shape') else np.asarray(norm_actions).shape
+                        except Exception:
+                            shape_info = 'unknown'
+                        print(f"[Runner] t={t} | chunk received: shape={shape_info}")
                     if hasattr(norm_actions, 'detach'):
                         norm_actions = norm_actions.detach().cpu().numpy()
                     # 逐 env 放入队列
