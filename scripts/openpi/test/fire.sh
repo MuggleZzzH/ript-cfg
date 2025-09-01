@@ -5,8 +5,8 @@ python train_ript_pi0.py \
   algo=pi0_cfg_rl \
   algo.norm_stats_path=/zhaohan/ZJH/openpi_pytorch/lerobot_dataset/norm_stats.json \
   algo.policy.pretrained_path=/zhaohan/ZJH/openpi_pytorch/checkpoints/pi0_libero_pytorch \
-  training.n_steps=20 \
+  training.n_steps=6 \
   rollout.enabled=true \
-  rollout.interval=10 \
+  rollout.interval=2 \
   task=libero_spatial_rl \
   logging.mode=disabled

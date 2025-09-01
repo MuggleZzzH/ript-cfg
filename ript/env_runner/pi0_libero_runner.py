@@ -80,7 +80,11 @@ class Pi0LiberoRunner:
 
     def create_env(self, env_name: str):
         # 与原Runner接口一致，这里仅返回占位（真实工程中应构造SubprocVectorEnv）
-        env = object()
+        class _StubEnv:
+            def close(self):
+                return None
+
+        env = _StubEnv()
         env_id = 0
         env_num = min(self.num_parallel_envs, self.rollouts_per_env)
         return env, env_id, env_num
