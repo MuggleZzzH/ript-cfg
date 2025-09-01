@@ -113,7 +113,7 @@ class CFGFlowOptimizerPI0:
             sub_loss = window_losses.mean()
 
             sub_loss_norm = sub_loss / max(1, self.gradient_accumulation_steps)
-            with torch.cuda.amp.autocast(enabled=torch.cuda.is_available(), dtype=torch.bfloat16):
+            with torch.amp.autocast('cuda', enabled=torch.cuda.is_available(), dtype=torch.bfloat16):
                 sub_loss_norm.backward()
             running_loss += float(sub_loss.detach().item())
             accum_count += 1
@@ -267,7 +267,7 @@ class CFGFlowOptimizerPI0:
         # Call underlying PI0Policy forward to get per-step-per-dim losses in loss_dict['losses']
         # 用混合精度降低显存
         if torch.cuda.is_available():
-            with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+            with torch.amp.autocast('cuda', dtype=torch.bfloat16):
                 out = model.model.forward(batch)
         else:
             out = model.model.forward(batch)
