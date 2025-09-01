@@ -275,15 +275,6 @@ fix_scale_head: false
 
 ## 十二、最小验证用例（建议先本地单卡跑通）
 
----
-
-## 十三、数据采样与监督细则（对齐 openpi）
-
-- 滑窗采样（stride=1）：对单条轨迹长度 N、动作视界 H=50，样本起点 t 取 [0, 1, …, N−H]，每个样本含 obs[t] 与 actions[t:t+H]。为控内存可用 stride=10/50 或 last 模式。
-- 相对动作监督：label 动作为“相对量”，由绝对动作与起点状态还原 delta；再按 `norm_stats` 做归一化。执行时先反归一化，再将前 6 维加回起点 eef 位姿，得到绝对动作。
-- padding 掩码：短于 H 的窗口以 `action_is_pad` 标记并在损失归约时屏蔽。
-- 语言/图像：图像 HWC uint8，策略内部做 normalize/resize/pad；prompt 直接传递字符串列表。
-
 1) 数据/环境：单任务、单 GPU，`num_parallel_envs=1`，`rollouts_per_env=4`；
 2) 训练 50〜200 步，检查：
    - 日志中 `mean_advantage`、`mean_scores`、`fm_loss` 是否合理收敛；

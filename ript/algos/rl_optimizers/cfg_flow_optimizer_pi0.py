@@ -23,6 +23,7 @@ class CFGFlowOptimizerPI0:
         alpha_uncond: float = 0.1,
         stride: int = 1,
         max_windows_per_episode: int | None = None,
+        optimizer_batch_size: int = 4,
         **kwargs: Any,
     ) -> None:
         self.rollout_generator = rollout_generator
@@ -31,6 +32,7 @@ class CFGFlowOptimizerPI0:
         self.alpha_uncond = alpha_uncond
         self.stride = max(1, stride)
         self.max_windows_per_episode = max_windows_per_episode
+        self.optimizer_batch_size = max(1, optimizer_batch_size)
 
     # ====== Public API ======
     def optimize(self, model, batch, optimizers, data_iterator=None, dataloader=None) -> Dict[str, float]:
@@ -72,66 +74,70 @@ class CFGFlowOptimizerPI0:
                 "rollout_checked": float(samples_checked),
             }
 
-        # 5) Collate batch tensors
-        batch_data = self._collate_samples(samples, device)
+        # 5) Micro-batch training to avoid OOM
+        total_samples = len(samples)
+        accum_count = 0
+        running_loss = 0.0
+        for start in range(0, total_samples, self.optimizer_batch_size):
+            end = min(start + self.optimizer_batch_size, total_samples)
+            sub_samples = samples[start:end]
+            sub_adv = sample_adv[start:end]
 
-        # 6) Shared-noise/time dual-branch FM loss (is_positive stub passed; model to consume later)
-        B, T, D_label = batch_data["action"].shape
-        D_max = int(getattr(getattr(model, "model", None), "config", None).max_action_dim) if hasattr(getattr(model, "model", None), "config") else 32
-        noise = torch.randn(B, T, D_max, device=device, dtype=batch_data["state"].dtype)
-        time = torch.rand(B, device=device, dtype=batch_data["state"].dtype) * 0.999 + 0.001
+            batch_data = self._collate_samples(sub_samples, device)
+            B, T, _ = batch_data["action"].shape
+            D_max = int(getattr(getattr(model, "model", None), "config", None).max_action_dim) if hasattr(getattr(model, "model", None), "config") else 32
+            noise = torch.randn(B, T, D_max, device=device, dtype=batch_data["state"].dtype)
+            time = torch.rand(B, device=device, dtype=batch_data["state"].dtype) * 0.999 + 0.001
 
-        # is_positive flags from advantages
-        w_pos = (sample_adv > 0).float().to(device)
+            w_pos = (sub_adv > 0).float().to(device)
 
-        # pos branch
-        batch_pos = dict(batch_data)
-        batch_pos["noise"] = noise
-        batch_pos["time"] = time
-        batch_pos["is_positive"] = torch.ones(B, device=device, dtype=torch.long)
-        loss_pos, loss_dict_pos = self._forward_losses(model, batch_pos)
-        per_step_pos = loss_dict_pos["losses"].mean(dim=-1)  # (B,T)
+            batch_pos = dict(batch_data)
+            batch_pos["noise"] = noise
+            batch_pos["time"] = time
+            batch_pos["is_positive"] = torch.ones(B, device=device, dtype=torch.long)
+            loss_pos, loss_dict_pos = self._forward_losses(model, batch_pos)
+            per_step_pos = loss_dict_pos["losses"].mean(dim=-1)
 
-        # uncond branch (shared noise/time)
-        batch_uncond = dict(batch_data)
-        batch_uncond["noise"] = noise
-        batch_uncond["time"] = time
-        batch_uncond["is_positive"] = torch.zeros(B, device=device, dtype=torch.long)
-        _, loss_dict_uncond = self._forward_losses(model, batch_uncond)
-        per_step_uncond = loss_dict_uncond["losses"].mean(dim=-1)  # (B,T)
+            batch_uncond = dict(batch_data)
+            batch_uncond["noise"] = noise
+            batch_uncond["time"] = time
+            batch_uncond["is_positive"] = torch.zeros(B, device=device, dtype=torch.long)
+            _, loss_dict_uncond = self._forward_losses(model, batch_uncond)
+            per_step_uncond = loss_dict_uncond["losses"].mean(dim=-1)
 
-        # padding-aware reduction
-        mask = (~batch_data["action_is_pad"]).float()  # (B,T)
-        w_pos_exp = w_pos.view(B, 1).expand_as(mask)
-        combined = w_pos_exp * per_step_pos + self.alpha_uncond * per_step_uncond
-        valid_steps = mask.sum(dim=1).clamp_min(1.0)
-        window_losses = (combined * mask).sum(dim=1) / valid_steps  # (B,)
-        final_loss = window_losses.mean()
+            mask = (~batch_data["action_is_pad"]).float()
+            w_pos_exp = w_pos.view(B, 1).expand_as(mask)
+            combined = w_pos_exp * per_step_pos + self.alpha_uncond * per_step_uncond
+            valid_steps = mask.sum(dim=1).clamp_min(1.0)
+            window_losses = (combined * mask).sum(dim=1) / valid_steps
+            sub_loss = window_losses.mean()
 
-        # 7) Backward + step with gradient accumulation
-        final_loss_norm = final_loss / max(1, self.gradient_accumulation_steps)
-        final_loss_norm.backward()
+            sub_loss_norm = sub_loss / max(1, self.gradient_accumulation_steps)
+            with torch.cuda.amp.autocast(enabled=torch.cuda.is_available(), dtype=torch.bfloat16):
+                sub_loss_norm.backward()
+            running_loss += float(sub_loss.detach().item())
+            accum_count += 1
 
-        # sync grads (avg) in DDP if initialized
-        if dist.is_initialized():
-            for group_name in ("model", "header"):
-                if hasattr(model, 'trainable_params') and group_name in model.trainable_params:
-                    for p in model.trainable_params[group_name]:
-                        if p.grad is not None:
-                            dist.all_reduce(p.grad, op=dist.ReduceOp.AVG)
+            if accum_count % self.gradient_accumulation_steps == 0 or end == total_samples:
+                if dist.is_initialized():
+                    for group_name in ("model", "header"):
+                        if hasattr(model, 'trainable_params') and group_name in model.trainable_params:
+                            for p in model.trainable_params[group_name]:
+                                if p.grad is not None:
+                                    dist.all_reduce(p.grad, op=dist.ReduceOp.AVG)
+                for opt in optimizers:
+                    params = []
+                    for group in opt.param_groups:
+                        params.extend(group["params"])
+                    torch.nn.utils.clip_grad_norm_(params, 1.0)
+                    opt.step()
+                    opt.zero_grad()
+                accum_count = 0
 
-        # step all optimizers
-        for opt in optimizers:
-            # clip grads on parameters belonging to this optimizer
-            params = []
-            for group in opt.param_groups:
-                params.extend(group["params"])
-            torch.nn.utils.clip_grad_norm_(params, 1.0)
-            opt.step()
-            opt.zero_grad()
+        avg_loss = running_loss / max(1, (total_samples + self.optimizer_batch_size - 1) // self.optimizer_batch_size)
 
         metrics = {
-            "training/fm_loss": float(final_loss.detach().item()),
+            "training/fm_loss": float(avg_loss),
             "mean_scores": float(scores_t.mean().item()),
             "mean_advantage": float(adv.mean().item()),
             "non_zero_adv_ratio": float((adv != 0).float().mean().item()),
@@ -166,9 +172,19 @@ class CFGFlowOptimizerPI0:
 
             # observations: take the starting observation for the window; our stub stores [[obs]]
             obs_list = ep.get('observations', [[]])
-            if len(obs_list) == 0 or len(obs_list[0]) == 0:
+            if len(obs_list) == 0:
                 continue
-            obs0 = obs_list[0]
+            # observations 通常为按时间步的列表；每个时间步是并行环境数量的列表
+            # 兼容以下两种结构：
+            # 1) [ {obs_dict_t0_env0}, {obs_dict_t1_env0}, ... ]
+            # 2) [ [obs_dict_t0_env0, obs_dict_t0_env1, ...], [obs_dict_t1_env0, ...], ... ]
+            first = obs_list[0]
+            if isinstance(first, dict):
+                obs0 = first
+            elif isinstance(first, list) and len(first) > 0 and isinstance(first[0], dict):
+                obs0 = first[0]
+            else:
+                continue
             # valid mask
             valid = ep.get('valid', [[True] * len(act_norm)])
             valid_seq = np.asarray(valid[0], dtype=bool)
@@ -189,13 +205,25 @@ class CFGFlowOptimizerPI0:
                 action_is_pad[: min(H, T_seq - start)] = False
 
                 # build sample
+                try:
+                    img_base = obs0['image']['base_0_rgb']
+                    img_wrist = obs0['image'].get('left_wrist_0_rgb', img_base)
+                    state_np = np.asarray(obs0['state'], dtype=np.float32)
+                    prompt_list = obs0.get('prompt', [''])
+                    if isinstance(prompt_list, list):
+                        prompt_out = prompt_list[0:1]
+                    else:
+                        prompt_out = [str(prompt_list)]
+                except Exception:
+                    continue
+
                 sample = {
                     'image': {
-                        'base_0_rgb': obs0['image']['base_0_rgb'],
-                        'left_wrist_0_rgb': obs0['image'].get('left_wrist_0_rgb', obs0['image']['base_0_rgb']),
+                        'base_0_rgb': img_base,
+                        'left_wrist_0_rgb': img_wrist,
                     },
-                    'state': np.asarray(obs0['state'], dtype=np.float32),
-                    'prompt': obs0.get('prompt', [''])[0:1],
+                    'state': state_np,
+                    'prompt': prompt_out,
                     'action': window_actions.astype(np.float32),
                     'action_is_pad': action_is_pad,
                 }
@@ -237,7 +265,12 @@ class CFGFlowOptimizerPI0:
 
     def _forward_losses(self, model, batch: Dict[str, Any]) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         # Call underlying PI0Policy forward to get per-step-per-dim losses in loss_dict['losses']
-        out = model.model.forward(batch)
+        # 用混合精度降低显存
+        if torch.cuda.is_available():
+            with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+                out = model.model.forward(batch)
+        else:
+            out = model.model.forward(batch)
         if isinstance(out, tuple):
             loss, loss_dict = out
         else:
