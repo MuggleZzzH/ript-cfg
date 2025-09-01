@@ -30,6 +30,54 @@ class Pi0LiberoRunner:
         self.action_mean = np.zeros(7, dtype=np.float32)
         self.action_std = np.ones(7, dtype=np.float32)
 
+    def run(
+        self,
+        policy,
+        n_video: int = 0,
+        do_tqdm: bool = False,
+        save_video_fn=None,
+        run_env_names: List[str] | None = None,
+        created_envs: Any = None,
+    ) -> Dict[str, Any]:
+        try:
+            from tqdm import tqdm  # optional
+        except Exception:
+            def tqdm(x, **kwargs):
+                return x
+
+        env_names = run_env_names if run_env_names is not None else (self.task_names_to_use or [self.benchmark_name])
+
+        successes_all: List[float] = []
+        rewards_all: List[float] = []
+        per_env_success_rates: Dict[str, float] = {}
+        per_env_any_success: List[bool] = []
+
+        for env_name in tqdm(env_names, disable=not do_tqdm):
+            any_success = False
+            env_succs: List[float] = []
+            env_rews: List[float] = []
+
+            rollouts = self.run_policy_in_env(env_name, policy, render=n_video > 0, created_env=None)
+            for success, total_reward, episode in rollouts:
+                any_success = any_success or bool(success)
+                successes_all.append(float(success))
+                env_succs.append(float(success))
+                rewards_all.append(float(total_reward))
+                env_rews.append(float(total_reward))
+
+            per_env_success_rates[env_name] = float(np.mean(env_succs)) if len(env_succs) > 0 else 0.0
+            per_env_any_success.append(any_success)
+
+        output: Dict[str, Any] = {}
+        output['rollout'] = {
+            'overall_success_rate': float(np.mean(successes_all)) if len(successes_all) > 0 else 0.0,
+            'overall_average_reward': float(np.mean(rewards_all)) if len(rewards_all) > 0 else 0.0,
+            'environments_solved': int(np.sum(per_env_any_success)),
+            'rollout_count': len(successes_all),
+        }
+        output['rollout_success_rate'] = {k: float(v) for k, v in per_env_success_rates.items()}
+        return output
+
     def create_env(self, env_name: str):
         # 与原Runner接口一致，这里仅返回占位（真实工程中应构造SubprocVectorEnv）
         env = object()
