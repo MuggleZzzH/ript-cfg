@@ -33,7 +33,7 @@ def _ensure_openpi_on_path(workspace_root: Optional[str] = None) -> None:
 
 
 _ensure_openpi_on_path()
-from openpi_pytorch.pi0.modeling_pi0 import PI0Policy  # type: ignore
+from pi0.modeling_pi0 import PI0Policy  # type: ignore
 
 
 class PI0_OFT_Policy:

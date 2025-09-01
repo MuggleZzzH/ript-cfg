@@ -5,6 +5,7 @@ policy:
   _target_: ript.algos.policies.pi0_oft_policy.PI0_OFT_Policy
   device_id: 0
   norm_stats_path: ${algo.norm_stats_path}
+  pretrained_policy_path: /zhaohan/ZJH/openpi_pytorch/checkpoints/pi0_libero_pytorch
 
 optimizer_factory:
   _target_: torch.optim.AdamW
@@ -59,6 +60,6 @@ use_val_init: false
 mix_val_init_in_rloo: false
 gradient_accumulation_steps: 1
 eval_only: false
-norm_stats_path: 
+norm_stats_path: /zhaohan/ZJH/openpi_pytorch/lerobot_dataset
 
 
