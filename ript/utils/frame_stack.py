@@ -14,7 +14,11 @@ import numpy as np
 import gymnasium as gym
 from gymnasium.core import ActType, ObsType, WrapperActType, WrapperObsType
 from gymnasium.vector.utils import batch_space, concatenate, create_empty_array
-from gymnasium.wrappers.utils import create_zero_array
+
+# Use create_empty_array instead of create_zero_array (compatibility fix)
+def create_zero_array(space, n=1, fn=np.zeros):
+    """Create a (n,) + space.shape array filled with zeros"""
+    return fn((n,) + space.shape, dtype=space.dtype)
 
 
 class FrameStackObservationFixed(

@@ -1,9 +1,7 @@
-I'll help you translate the comments to Chinese and provide brief explanations of what each function does. However, I don't see the actual code selection in your message. Could you please share the code that needs to be translated and explained?
-
-Once you provide the code selection, I'll:
-1. Translate all comments to Chinese
-2. Add brief explanations of what each function does
-3. Make sure the translations are clear and accurate
+import torch
+import torch.nn as nn
+import numpy as np
+import collections
 
 
 def separate_no_decay(module, 

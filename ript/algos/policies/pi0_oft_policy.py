@@ -15,6 +15,7 @@ import sys
 
 import torch
 from torch import nn
+from safetensors.torch import load_file
 
 
 def _ensure_openpi_on_path(workspace_root: Optional[str] = None) -> None:
@@ -51,7 +52,12 @@ class PI0_OFT_Policy:
         # 1) Load PI0 policy (默认路径可后续在服务器替换)
         try:
             if pretrained_path and Path(pretrained_path).exists():
-                self.model = PI0Policy.from_pretrained(pretrained_path)
+                # 先用本地tokenizer路径创建实例，然后加载权重
+                config = PI0Policy.config_class()
+                self.model = PI0Policy(config, tokenizer_path=str(pretrained_path))
+                # 加载预训练权重（使用safetensors格式）
+                checkpoint = load_file(Path(pretrained_path) / "model.safetensors")
+                self.model.load_state_dict(checkpoint, strict=False)
             else:
                 # 冷启动（无预训练权重时）
                 self.model = PI0Policy(PI0Policy.config_class())

@@ -5,14 +5,14 @@ policy:
   _target_: ript.algos.policies.pi0_oft_policy.PI0_OFT_Policy
   device_id: 0
   norm_stats_path: ${algo.norm_stats_path}
-  pretrained_policy_path: /zhaohan/ZJH/openpi_pytorch/checkpoints/pi0_libero_pytorch
+  pretrained_path: /zhaohan/ZJH/openpi_pytorch/checkpoints/pi0_libero_pytorch
 
 optimizer_factory:
   _target_: torch.optim.AdamW
   _partial_: true
   lr: ${algo.lr}
   betas: [0.9, 0.95]
-  weight_decay: 1.0e-10
+  weight_decay: ${algo.weight_decay}
 
 scheduler_factory:
   _target_: torch.optim.lr_scheduler.CosineAnnealingLR
@@ -44,6 +44,9 @@ rl_optimizer_factory:
   _target_: ript.algos.rl_optimizers.cfg_flow_optimizer_pi0.CFGFlowOptimizerPI0
   _partial_: true
   gradient_accumulation_steps: ${algo.gradient_accumulation_steps}
+  alpha_uncond: ${algo.alpha_uncond}
+  stride: ${algo.stride}
+  max_windows_per_episode: ${algo.max_windows_per_episode}
 
 name: pi0_cfg
 
@@ -60,6 +63,31 @@ use_val_init: false
 mix_val_init_in_rloo: false
 gradient_accumulation_steps: 1
 eval_only: false
-norm_stats_path: /zhaohan/ZJH/openpi_pytorch/lerobot_dataset
+norm_stats_path: /zhaohan/ZJH/openpi_pytorch/lerobot_dataset/norm_stats.json
+rollout_training_task_names: null
+frame_stack: 1
+
+# model parameters
+model_seed: 7
+weight_decay: 0.0001
+
+# rollout stats tracking
+rollout_stats_path: null
+
+# CFG Flow optimizer specific parameters
+alpha_uncond: 0.1
+stride: 1
+max_windows_per_episode: null
+
+dataset:
+  seq_len: 600
+  frame_stack: 1
+  obs_seq_len: 1
+  lowdim_obs_seq_len: null
+  load_obs_for_pretrain: false
+  get_pad_mask: true
+  pad_seq_length: false
+  load_state: true
+  load_next_obs: false
 
 
