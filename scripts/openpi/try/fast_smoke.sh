@@ -46,10 +46,12 @@ MAX_WINDOWS=${MAX_WINDOWS:-5}
 OPTIMIZER_BATCH=${OPTIMIZER_BATCH:-4}
 CONDITION_MODE=${CONDITION_MODE:-token}
 ROLLOUT_ENABLED=${ROLLOUT_ENABLED:-true}
+EVAL_ONLY=${EVAL_ONLY:-false}
 
 echo "[FAST TEST] Params: steps=$TRAINING_STEPS, batch=$BATCH_SIZE, rloo=$RLOO_BATCH, rollouts_per_env=$ROLLOUTS_PER_ENV"
 echo "[FAST TEST] Episode: max_len=$MAX_EP_LEN, wait=$WAIT_STEPS; windows: stride=$STRIDE, max=$MAX_WINDOWS"
 echo "[FAST TEST] Dynamic sampling=$ENABLE_DYNAMIC_SAMPLING, early_stop=$EARLY_STOP_PCT, rollout.enabled=$ROLLOUT_ENABLED"
+echo "[FAST TEST] Mode: eval_only=$EVAL_ONLY"
 
 # --- Distributed single-process wiring ---
 MASTER_PORT=$(python - << 'PY'
@@ -77,6 +79,7 @@ RANK=0 WORLD_SIZE=1 MASTER_ADDR=localhost MASTER_PORT=$MASTER_PORT python train_
   algo.max_windows_per_episode=$MAX_WINDOWS \
   algo.rl_optimizer_factory.optimizer_batch_size=$OPTIMIZER_BATCH \
   algo.policy.condition_mode=$CONDITION_MODE \
+  algo.eval_only=$EVAL_ONLY \
   rollout.enabled=$ROLLOUT_ENABLED \
   +rollout.n_video=2 \
   logging.mode=disabled
