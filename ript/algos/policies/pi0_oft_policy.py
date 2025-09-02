@@ -195,7 +195,7 @@ class PI0_OFT_Policy:
             start_ts.record()
 
         # PI0 前向：得到 (B, 50, D)，截取前7维为动作维度
-        actions = self.model.select_action(batch, cfg_scale=cfg_scale, is_positive_infer=is_positive_infer)
+        actions = self.model.select_action(batch)
 
         if end_ts is not None:
             end_ts.record()
