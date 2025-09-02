@@ -185,7 +185,12 @@ def main(cfg):
             # Switch to eval if model exposes inner module
             if hasattr(model, 'model') and hasattr(model.model, 'eval'):
                 model.model.eval()
-            rollout_results = eval_env_runner.run(model, n_video=0, do_tqdm=train_cfg.use_tqdm)
+            # Pass through rollout.n_video if provided; fallback to env var PI0_N_VIDEO
+            try:
+                n_video = int(getattr(cfg.rollout, 'n_video', int(os.environ.get('PI0_N_VIDEO', 0))))
+            except Exception:
+                n_video = 0
+            rollout_results = eval_env_runner.run(model, n_video=n_video, do_tqdm=train_cfg.use_tqdm)
             print(f'[RANK {rank}] Rollout results: {rollout_results}')
             sync_rollout_results_via_file(rollout_results, logger, 0)
 
@@ -284,5 +289,4 @@ def main(cfg):
 
 if __name__ == "__main__":
     main()
-
 

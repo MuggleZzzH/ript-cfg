@@ -216,7 +216,11 @@ def main(cfg):
         eval_env_runner = instantiate(cfg.algo.env_runner, task_names_to_use=local_eval_tasks, num_parallel_envs=num_parallel_envs, max_episode_length=None, use_laplace_sampling=False, scale_factor=1.0)
         if cfg.algo.eval_only:
             model.model.eval()
-            rollout_results = eval_env_runner.run(model, n_video=0, do_tqdm=train_cfg.use_tqdm)
+            try:
+                n_video = int(getattr(cfg.rollout, 'n_video', int(os.environ.get('PI0_N_VIDEO', 0))))
+            except Exception:
+                n_video = 0
+            rollout_results = eval_env_runner.run(model, n_video=n_video, do_tqdm=train_cfg.use_tqdm)
             print(f'[RANK {rank}] Rollout results: {rollout_results}')
             sync_rollout_results_via_file(rollout_results, logger, 0)
 
@@ -319,7 +323,11 @@ def main(cfg):
         if cfg.rollout.enabled and ((global_step % rollout_interval_steps == 0) or global_step == total_steps - 1 or rollout_interval_steps == 1):
             print(f'[RANK {rank}] Conducting rollout evaluation')
             model.model.eval()
-            rollout_results = eval_env_runner.run(model, n_video=0, do_tqdm=train_cfg.use_tqdm)
+            try:
+                n_video = int(getattr(cfg.rollout, 'n_video', int(os.environ.get('PI0_N_VIDEO', 0))))
+            except Exception:
+                n_video = 0
+            rollout_results = eval_env_runner.run(model, n_video=n_video, do_tqdm=train_cfg.use_tqdm)
             print(f'[RANK {rank}] Rollout results: {rollout_results}')
 
             # 分布式同步并记录rollout结果
