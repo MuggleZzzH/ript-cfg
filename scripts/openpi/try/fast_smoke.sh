@@ -78,6 +78,7 @@ RANK=0 WORLD_SIZE=1 MASTER_ADDR=localhost MASTER_PORT=$MASTER_PORT python train_
   algo.rl_optimizer_factory.optimizer_batch_size=$OPTIMIZER_BATCH \
   algo.policy.condition_mode=$CONDITION_MODE \
   rollout.enabled=$ROLLOUT_ENABLED \
+  +rollout.n_video=2 \
   logging.mode=disabled
 
 EXIT_CODE=$?
