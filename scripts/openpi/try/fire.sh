@@ -48,15 +48,43 @@ LOG_FILE="${LOG_DIR}/train_run_${TIMESTAMP}.log"
     echo "   当前使用的 Python: $(which python)"
     echo
 
-    # --- 步骤 4: 设置环境变量 ---
-    echo "--- 步骤 4: 设置必要的环境变量 ---"
+    # --- 步骤 4: 设置环境变量和训练参数 ---
+    echo "--- 步骤 4: 设置必要的环境变量和训练参数 ---"
+    export PI0_VERBOSE=1
     export HYDRA_FULL_ERROR=1
     export PYTHONPATH=$PYTHONPATH:"$PROJECT_ROOT/LIBERO":"$PROJECT_ROOT"
     export HF_ENDPOINT=https://hf-mirror.com
     export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-    export PI0_CFG_SCALE=1.0
-    export PI0_IS_POSITIVE=1
-    echo "✅ HYDRA_FULL_ERROR, PYTHONPATH, HF_ENDPOINT, PYTORCH_CUDA_ALLOC_CONF 已设置。"
+    
+    # === 关键训练参数配置 ===
+    TRAINING_STEPS=2                    # 训练步数
+    BATCH_SIZE=2                         # 批次大小  
+    GRADIENT_ACCUM_STEPS=4               # 梯度累积步数
+    LEARNING_RATE=2.5e-5                 # 学习率
+    
+    # === CFG-Flow 相关参数 ===
+    CONDITION_MODE="token"               # CFG注入模式: bias|token|concat
+    ALPHA_UNCOND=0.1                     # 无条件分支权重
+    STRIDE=1                             # 滑窗步长
+    MAX_WINDOWS=50                       # 每个episode最大窗口数
+    OPTIMIZER_BATCH_SIZE=4               # 优化器微批大小
+    
+    # === 评测与CFG推理参数 ===
+    ROLLOUT_ENABLED=true                 # 是否启用评测
+    ROLLOUT_INTERVAL=2                  # 评测间隔
+    export PI0_CFG_SCALE=2.0             # CFG推理强度 (1.0=无CFG, >1.0=更强条件)
+    export PI0_IS_POSITIVE=1             # 推理时条件 (0=负样本, 1=正样本)
+    
+    # === 环境与并行设置 ===
+    NUM_PARALLEL_ENVS=2                  # 并行环境数
+    ROLLOUTS_PER_ENV=16                  # 每环境rollout数
+    MAX_EPISODE_LENGTH=300               # 最大episode长度
+    
+    echo "✅ 训练参数配置完成:"
+    echo "   - 训练步数: $TRAINING_STEPS, 批次大小: $BATCH_SIZE"
+    echo "   - CFG模式: $CONDITION_MODE, α_uncond: $ALPHA_UNCOND"
+    echo "   - 推理CFG: scale=$PI0_CFG_SCALE, is_positive=$PI0_IS_POSITIVE"
+    echo "   - 评测: enabled=$ROLLOUT_ENABLED, interval=$ROLLOUT_INTERVAL"
     echo
 
     # --- 步骤 5: 准备并执行训练命令 ---
@@ -64,17 +92,30 @@ LOG_FILE="${LOG_DIR}/train_run_${TIMESTAMP}.log"
     MASTER_PORT=$(python -c "import socket; s=socket.socket(); s.bind(('', 0)); print(s.getsockname()[1]); s.close()")
     echo "   - 动态分配的主端口 (MASTER_PORT): $MASTER_PORT"
     echo "   - 使用本地模型权重和归一化统计..."
-    echo "   - 训练配置: PI0 + CFG-Flow, libero_spatial_rl, 20步"
+    echo "   - 训练配置: PI0 + CFG-Flow, libero_spatial_rl, ${TRAINING_STEPS}步"
     echo
     
     RANK=0 WORLD_SIZE=1 MASTER_ADDR=localhost MASTER_PORT=$MASTER_PORT \
     python train_ript_pi0.py \
-      --config-name=train_pi0_cfg_rl \
+      --config-name=train_base_rl_openvla_oft \
+      algo=pi0_cfg_rl \
       algo.norm_stats_path=/zhaohan/ZJH/openpi_pytorch/lerobot_dataset/norm_stats.json \
       algo.policy.pretrained_path=/zhaohan/ZJH/openpi_pytorch/checkpoints/pi0_libero_pytorch \
-      training.n_steps=20 \
-      rollout.enabled=true \
-      rollout.interval=10 \
+      training.n_steps=$TRAINING_STEPS \
+      train_dataloader.batch_size=$BATCH_SIZE \
+      algo.gradient_accumulation_steps=$GRADIENT_ACCUM_STEPS \
+      algo.lr=$LEARNING_RATE \
+      algo.policy.condition_mode=$CONDITION_MODE \
+      algo.alpha_uncond=$ALPHA_UNCOND \
+      algo.stride=$STRIDE \
+      algo.max_windows_per_episode=$MAX_WINDOWS \
+      algo.rl_optimizer_factory.optimizer_batch_size=$OPTIMIZER_BATCH_SIZE \
+      rollout.enabled=$ROLLOUT_ENABLED \
+      rollout.interval=$ROLLOUT_INTERVAL \
+      algo.num_parallel_envs=$NUM_PARALLEL_ENVS \
+      algo.rollouts_per_env=$ROLLOUTS_PER_ENV \
+      algo.max_episode_length=$MAX_EPISODE_LENGTH \
+      task=libero_spatial_rl \
       logging.mode=disabled
 
     echo
