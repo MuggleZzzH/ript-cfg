@@ -8,6 +8,8 @@ import os
 import numpy as np
 import math
 from collections import deque
+from datetime import datetime
+import imageio.v2 as imageio
 
 from libero.libero import benchmark as libero_benchmark
 from libero.libero import get_libero_path
@@ -49,6 +51,11 @@ class Pi0LiberoRunner:
         run_env_names: List[str] | None = None,
         created_envs: Any = None,
     ) -> Dict[str, Any]:
+        # 可用环境变量覆盖 n_video（便于脚本控制）
+        try:
+            n_video = int(os.environ.get('PI0_N_VIDEO', n_video))
+        except Exception:
+            pass
         try:
             from tqdm import tqdm  # optional
         except Exception:
@@ -147,6 +154,14 @@ class Pi0LiberoRunner:
         except Exception:
             pass
 
+        # 准备视频输出目录
+        video_dir = os.environ.get('PI0_VIDEO_DIR', os.path.join('output', 'videos'))
+        if render:
+            try:
+                os.makedirs(video_dir, exist_ok=True)
+            except Exception:
+                render = False
+
         for loop_idx in range(total_loops):
             # 取 init states
             if all_init_states is None:
@@ -176,6 +191,34 @@ class Pi0LiberoRunner:
             }
 
             t = 0
+            # 视频帧缓存（仅记录第0个并行环境，减少IO开销）
+            frames: List[np.ndarray] = [] if render else None
+
+            def _extract_frame_from_obs(o: Dict[str, Any]) -> np.ndarray | None:
+                try:
+                    base = o.get('agentview_image', o.get('agentview_rgb'))
+                    wrist = o.get('robot0_eye_in_hand_image', o.get('eye_in_hand_rgb'))
+                    if base is None or wrist is None:
+                        return None
+                    base = np.asarray(base)
+                    wrist = np.asarray(wrist)
+                    if base.ndim == 3 and base.dtype != np.uint8:
+                        base = (base * 255.0).clip(0, 255).astype(np.uint8)
+                    if wrist.ndim == 3 and wrist.dtype != np.uint8:
+                        wrist = (wrist * 255.0).clip(0, 255).astype(np.uint8)
+                    # 方向对齐（与预处理一致，180°翻转）
+                    base = base[::-1, ::-1].copy()
+                    wrist = wrist[::-1, ::-1].copy()
+                    # 对齐尺寸
+                    h = min(base.shape[0], wrist.shape[0])
+                    w = min(base.shape[1], wrist.shape[1])
+                    base = base[:h, :w]
+                    wrist = wrist[:h, :w]
+                    frame = np.concatenate([base, wrist], axis=1)
+                    return frame
+                except Exception:
+                    return None
+
             while t < (self.max_episode_length + self.num_steps_wait):
                 # wait steps
                 if t < self.num_steps_wait:
@@ -259,9 +302,24 @@ class Pi0LiberoRunner:
                     done_flags[i] = bool(done[i]) if isinstance(done, (list, tuple)) else bool(done)
                     success_flags[i] = success_flags[i] or done_flags[i]
 
+                # 记录视频帧（仅并行环境0）
+                if render and isinstance(obs, (list, tuple)) and len(obs) > 0 and frames is not None:
+                    frame = _extract_frame_from_obs(obs[0])
+                    if frame is not None:
+                        frames.append(frame)
+
                 if all(done_flags):
                     break
                 t += 1
+
+            # 保存视频（每个 loop 一段）
+            if render and frames is not None and len(frames) > 0:
+                ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                out_path = os.path.join(video_dir, f'{env_name}_loop{loop_idx}_{ts}.mp4')
+                try:
+                    imageio.mimsave(out_path, frames, fps=10)
+                except Exception:
+                    pass
 
             # 逐 env 产出一次 rollouts（平均 reward / success）
             for k in range(env_num):
