@@ -83,6 +83,30 @@ class PI0_OFT_Policy:
         self.model.to(self.device)
         self.model.eval()
 
+        # 2.1) Optional: apply freeze / expert-only flags from kwargs (works with pretrained too)
+        try:
+            freeze_flag = kwargs.get("freeze_vision_encoder", None)
+            expert_only = kwargs.get("train_expert_only", None)
+            core = self.model.model if hasattr(self.model, "model") else self.model
+            # Update top-level config if present
+            if hasattr(core, "config"):
+                if freeze_flag is not None:
+                    setattr(core.config, "freeze_vision_encoder", bool(freeze_flag))
+                if expert_only is not None:
+                    setattr(core.config, "train_expert_only", bool(expert_only))
+            # Update expert module and re-apply requires_grad
+            if hasattr(core, "paligemma_with_expert"):
+                pe = core.paligemma_with_expert
+                if hasattr(pe, "config"):
+                    if freeze_flag is not None:
+                        setattr(pe.config, "freeze_vision_encoder", bool(freeze_flag))
+                    if expert_only is not None:
+                        setattr(pe.config, "train_expert_only", bool(expert_only))
+                if hasattr(pe, "set_requires_grad"):
+                    pe.set_requires_grad()
+        except Exception:
+            pass
+
         # 2) Trainable parameter groups (meaningful header):
         #    - 将 PI0 的动作输出投影头(action_out_proj)作为 header 组
         #    - 其余参数归为 model 组；若未找到该模块，退化为仅 model 组
@@ -229,5 +253,4 @@ class PI0_OFT_Policy:
         if _verbose:
             print(f"[PI0] action shape={tuple(act.shape)} (B,50,7)")
         return act
-
 

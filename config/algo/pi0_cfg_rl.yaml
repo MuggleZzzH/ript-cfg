@@ -7,6 +7,9 @@ policy:
   norm_stats_path: ${algo.norm_stats_path}
   pretrained_path: /zhaohan/ZJH/openpi_pytorch/checkpoints/pi0_libero_pytorch
   condition_mode: token  # 可选: bias|concat|token
+  # PI0 模型训练范围（迁移自代码参数）
+  freeze_vision_encoder: true     # 冻结视觉塔
+  train_expert_only: false        # 仅训练 Expert 后缀（前缀冻结）
 
 optimizer_factory:
   _target_: torch.optim.AdamW
@@ -55,7 +58,7 @@ name: pi0_cfg
 
 # algo-level defaults
 lr: 2.5e-5
-header_lr: 2.5e-5
+header_lr: 2.5e-5  # 与 lr 相同（默认不区分）
 num_parallel_envs: 1
 rollouts_per_env: 16
 max_episode_length: 300
@@ -98,5 +101,4 @@ dataset:
   pad_seq_length: false
   load_state: true
   load_next_obs: false
-
 
