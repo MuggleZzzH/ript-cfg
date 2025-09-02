@@ -335,7 +335,10 @@ class Pi0LiberoRunner:
 
             # 逐 env 产出一次 rollouts（平均 reward / success）
             for k in range(env_num):
-                yield success_flags[k], total_reward[k], episode
+                # 打包每个并行环境的 episode，并附带 success 字段供奖励函数使用
+                episode_k = dict(episode)
+                episode_k['success'] = bool(success_flags[k])
+                yield success_flags[k], total_reward[k], episode_k
 
         if created_env is None:
             try:
