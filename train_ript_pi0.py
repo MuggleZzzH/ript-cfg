@@ -242,6 +242,30 @@ def main(cfg):
         if train_cfg.cut and global_step >= train_cfg.cut:
             break
 
+        # Periodic rollout evaluation (optional) to enable video recording during training
+        if cfg.rollout.enabled and ((global_step % rollout_interval_steps == 0) or global_step == total_steps - 1 or rollout_interval_steps == 1):
+            try:
+                print(f'[RANK {rank}] Conducting rollout evaluation')
+                # Switch to eval for rollout
+                if hasattr(model, 'model') and hasattr(model.model, 'eval'):
+                    model.model.eval()
+                try:
+                    n_video = int(getattr(cfg.rollout, 'n_video', int(os.environ.get('PI0_N_VIDEO', 0))))
+                except Exception:
+                    n_video = 0
+                rollout_results = eval_env_runner.run(model, n_video=n_video, do_tqdm=train_cfg.use_tqdm)
+                print(f'[RANK {rank}] Rollout results: {rollout_results}')
+                # Sync results if logger is available
+                try:
+                    sync_rollout_results_via_file(rollout_results, logger, global_step)
+                except Exception:
+                    pass
+                # Switch back to train
+                if hasattr(model, 'model') and hasattr(model.model, 'train'):
+                    model.model.train()
+            except Exception as e:
+                print(f"[RANK {rank}] Warning: rollout evaluation failed: {e}")
+
         if global_step > 0 and global_step % steps_per_epoch == 0:
             epoch += 1
             t1 = time.time()
@@ -289,4 +313,3 @@ def main(cfg):
 
 if __name__ == "__main__":
     main()
-
