@@ -74,6 +74,20 @@ class CFGFlowOptimizerPI0:
                 "rollout_checked": float(samples_checked),
             }
 
+        # 4.5) Global shuffle across window samples (keep per-sample advantage aligned)
+        try:
+            perm = torch.randperm(len(samples), device=device)
+            samples = [samples[i] for i in perm.tolist()]
+            if isinstance(sample_adv, torch.Tensor) and sample_adv.numel() == len(perm):
+                sample_adv = sample_adv[perm]
+        except Exception:
+            # Fallback to CPU permutation if device randperm fails for any reason
+            import numpy as _np
+            _idx = _np.random.permutation(len(samples)).tolist()
+            samples = [samples[i] for i in _idx]
+            if isinstance(sample_adv, torch.Tensor) and sample_adv.numel() == len(_idx):
+                sample_adv = sample_adv[_idx]
+
         # 5) Micro-batch training to avoid OOM
         total_samples = len(samples)
         accum_count = 0

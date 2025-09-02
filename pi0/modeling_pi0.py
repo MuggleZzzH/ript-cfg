@@ -61,7 +61,11 @@ class PI0Policy(PreTrainedPolicy):
 
     @torch.no_grad
     def select_action(
-        self, observation: dict[str, Tensor], noise: Tensor | None = None
+        self,
+        observation: dict[str, Tensor],
+        noise: Tensor | None = None,
+        cfg_scale: float | None = None,
+        is_positive_infer: int | None = None,
     ):
         """
         Observation: {
@@ -82,8 +86,16 @@ class PI0Policy(PreTrainedPolicy):
         images, img_masks = self.prepare_images(observation)
         state = self.prepare_state(observation)
         lang_tokens, lang_masks = self.prepare_language(observation)
+        # 透传 cfg_scale / is_positive_infer 到流匹配采样，支持推理期CFG
         actions = self.model.sample_actions(
-            images, img_masks, lang_tokens, lang_masks, state, noise=noise
+            images,
+            img_masks,
+            lang_tokens,
+            lang_masks,
+            state,
+            noise=noise,
+            cfg_scale=cfg_scale if cfg_scale is not None else 1.0,
+            is_positive_infer=is_positive_infer,
         )
         return actions
 
@@ -519,7 +531,15 @@ class PI0FlowMatching(nn.Module):
         return losses
 
     def sample_actions(
-        self, images, img_masks, lang_tokens, lang_masks, state, noise=None
+        self,
+        images,
+        img_masks,
+        lang_tokens,
+        lang_masks,
+        state,
+        noise=None,
+        cfg_scale: float = 1.0,
+        is_positive_infer: int | None = None,
     ) -> Tensor:
         """Do a full inference forward and compute the action (batch_size x num_steps x num_motors)"""
         bsize = state.shape[0]
@@ -556,9 +576,45 @@ class PI0FlowMatching(nn.Module):
         while time >= -dt / 2:
             expanded_time = time.expand(bsize)
 
-            v_t = self.predict_velocity(
-                state, prefix_pad_masks, past_key_values, x_t, expanded_time
-            )
+            # 统一的 CFG 混合逻辑：当 cfg_scale != 1.0 时，计算 cond/uncond 双分支并合成
+            # 若 cfg_scale == 1.0，则单分支：优先使用 is_positive_infer；否则按默认规则（token=1，其他=None）
+            do_cfg = float(cfg_scale) != 1.0
+            if do_cfg:
+                v_uncond = self.predict_velocity(
+                    state,
+                    prefix_pad_masks,
+                    past_key_values,
+                    x_t,
+                    expanded_time,
+                    is_positive=torch.zeros(bsize, device=device, dtype=torch.long),
+                )
+                v_pos = self.predict_velocity(
+                    state,
+                    prefix_pad_masks,
+                    past_key_values,
+                    x_t,
+                    expanded_time,
+                    is_positive=torch.ones(bsize, device=device, dtype=torch.long),
+                )
+                v_t = v_uncond + cfg_scale * (v_pos - v_uncond)
+            else:
+                # prepare optional tensor flag if provided
+                pos_flag = None
+                if is_positive_infer is not None:
+                    val = int(is_positive_infer)
+                    pos_flag = torch.full((bsize,), val, device=device, dtype=torch.long)
+                else:
+                    # 默认：token 模式下使用正向分支，其它模式为无条件
+                    if getattr(self, 'condition_mode', 'bias') == 'token':
+                        pos_flag = torch.ones((bsize,), device=device, dtype=torch.long)
+                v_t = self.predict_velocity(
+                    state,
+                    prefix_pad_masks,
+                    past_key_values,
+                    x_t,
+                    expanded_time,
+                    is_positive=pos_flag,
+                )
 
             # Euler step
             x_t += dt * v_t
@@ -566,13 +622,14 @@ class PI0FlowMatching(nn.Module):
 
         return x_t
 
-    def predict_velocity(self, state, prefix_pad_masks, past_key_values, x_t, timestep):
-        """predict velocity at time t using the suffix model."""
-        # 推理时：若为 token 模式，默认使用正向条件 token（is_positive=1）；
-        # 其他模式保持无条件以维持兼容性。
-        infer_pos = 1 if getattr(self, 'condition_mode', 'bias') == 'token' else None
+    def predict_velocity(self, state, prefix_pad_masks, past_key_values, x_t, timestep, is_positive=None):
+        """predict velocity at time t using the suffix model.
+
+        Args:
+            is_positive: None 表示无条件；0/1 为显式分支。
+        """
         suffix_embs, suffix_pad_masks, suffix_att_masks = self.embed_suffix(
-            state, x_t, timestep, is_positive=infer_pos
+            state, x_t, timestep, is_positive=is_positive
         )
 
         suffix_len = suffix_pad_masks.shape[1]
