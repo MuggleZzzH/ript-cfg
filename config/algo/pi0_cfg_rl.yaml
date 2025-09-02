@@ -48,6 +48,7 @@ rl_optimizer_factory:
   alpha_uncond: ${algo.alpha_uncond}
   stride: ${algo.stride}
   max_windows_per_episode: ${algo.max_windows_per_episode}
+  optimizer_batch_size: 4
 
 name: pi0_cfg
 
@@ -63,6 +64,7 @@ enable_dynamic_sampling: false
 use_val_init: false
 mix_val_init_in_rloo: false
 gradient_accumulation_steps: 1
+optimizer_batch_size: 4
 eval_only: false
 norm_stats_path: /zhaohan/ZJH/openpi_pytorch/lerobot_dataset/norm_stats.json
 rollout_training_task_names: null
