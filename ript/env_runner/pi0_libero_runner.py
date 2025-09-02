@@ -310,8 +310,21 @@ class Pi0LiberoRunner:
 
                 obs, rew, done, info = env.step(step_actions)
                 for i in range(env_num):
-                    total_reward[i] += float(rew[i]) if isinstance(rew, (list, tuple)) else float(rew)
-                    done_flags[i] = bool(done[i]) if isinstance(done, (list, tuple)) else bool(done)
+                    # Handle list/tuple/np.ndarray scalars robustly
+                    if isinstance(rew, (list, tuple, np.ndarray)):
+                        ri = rew[i]
+                    else:
+                        ri = rew
+                    if isinstance(done, (list, tuple, np.ndarray)):
+                        di = done[i]
+                    else:
+                        di = done
+                    try:
+                        total_reward[i] += float(ri)
+                    except Exception:
+                        # Fallback if ri is numpy scalar
+                        total_reward[i] += float(np.asarray(ri).item())
+                    done_flags[i] = bool(di)
                     success_flags[i] = success_flags[i] or done_flags[i]
 
                 # 记录视频帧（仅并行环境0）
