@@ -65,7 +65,6 @@ RANK=0 WORLD_SIZE=1 MASTER_ADDR=localhost MASTER_PORT=$MASTER_PORT python train_
   algo.policy.pretrained_path=$PRETRAIN_PATH \
   training.n_steps=$TRAINING_STEPS \
   training.cut=1 \
-  training.rollout_steps=1 \
   train_dataloader.batch_size=$BATCH_SIZE \
   algo.rloo_batch_size=$RLOO_BATCH \
   algo.rollouts_per_env=$ROLLOUTS_PER_ENV \
@@ -79,7 +78,6 @@ RANK=0 WORLD_SIZE=1 MASTER_ADDR=localhost MASTER_PORT=$MASTER_PORT python train_
   algo.rl_optimizer_factory.optimizer_batch_size=$OPTIMIZER_BATCH \
   algo.policy.condition_mode=$CONDITION_MODE \
   rollout.enabled=$ROLLOUT_ENABLED \
-  +task.task_names_to_use=null \
   logging.mode=disabled
 
 EXIT_CODE=$?
