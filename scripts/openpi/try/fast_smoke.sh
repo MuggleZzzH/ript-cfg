@@ -15,13 +15,14 @@ cd "$PROJECT_ROOT"
 echo "[FAST TEST] Project root: $(pwd)"
 
 # --- Optional: conda (comment out if not needed) ---
-# source /opt/conda/etc/profile.d/conda.sh && conda activate mix
+source /opt/conda/etc/profile.d/conda.sh && conda activate mix
 
 # --- Env tweaks ---
 export HYDRA_FULL_ERROR=1
 export PYTHONPATH=$PYTHONPATH:"$PROJECT_ROOT/LIBERO":"$PROJECT_ROOT"
 export HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export PI0_DISABLE_INIT_STATES=1  # 快速测试：禁用初始状态设置
 
 # --- Paths (edit if needed) ---
 NORM_STATS=${NORM_STATS:-/zhaohan/ZJH/openpi_pytorch/lerobot_dataset/norm_stats.json}

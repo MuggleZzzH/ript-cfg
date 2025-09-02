@@ -163,29 +163,37 @@ class Pi0LiberoRunner:
                 render = False
 
         for loop_idx in range(total_loops):
-            # 取 init states
-            if all_init_states is None:
-                all_init_states = bench.get_task_init_states(task_id)
-            indices = np.arange(loop_idx * env_num, (loop_idx + 1) * env_num) % all_init_states.shape[0]
-            init_states_ = all_init_states[indices]
+            # 检查是否禁用初始状态设置（用于快速测试）
+            disable_init_states = os.getenv("PI0_DISABLE_INIT_STATES", "0") == "1"
+            
+            if disable_init_states:
+                # 快速测试模式：直接使用默认reset
+                env.reset()
+            else:
+                # 正常模式：尝试使用初始状态
+                # 取 init states
+                if all_init_states is None:
+                    all_init_states = bench.get_task_init_states(task_id)
+                indices = np.arange(loop_idx * env_num, (loop_idx + 1) * env_num) % all_init_states.shape[0]
+                init_states_ = all_init_states[indices]
 
-            # Robust init: prefer reset(init_states=...), fallback to reset()+set_init_state(...)
-            try:
-                env.reset(init_states=init_states_)
-            except Exception as e1:
+                # Robust init: prefer reset(init_states=...), fallback to reset()+set_init_state(...)
                 try:
-                    env.reset()
-                    env.set_init_state(init_states_)
-                except Exception as e2:
-                    # Final fallback: default reset, with a warning for visibility
-                    print(
-                        f"[Pi0LiberoRunner] Warning: failed to apply init_states via both reset(init_states=...) and set_init_state(...). "
-                        f"Falling back to default reset. err1={getattr(e1, 'args', e1)}, err2={getattr(e2, 'args', e2)}"
-                    )
+                    env.reset(init_states=init_states_)
+                except Exception as e1:
                     try:
                         env.reset()
-                    except Exception:
-                        pass
+                        env.set_init_state(init_states_)
+                    except Exception as e2:
+                        # Final fallback: default reset, with a warning for visibility
+                        print(
+                            f"[Pi0LiberoRunner] Warning: failed to apply init_states via both reset(init_states=...) and set_init_state(...). "
+                            f"Falling back to default reset. err1={getattr(e1, 'args', e1)}, err2={getattr(e2, 'args', e2)}"
+                        )
+                        try:
+                            env.reset()
+                        except Exception:
+                            pass
 
             # 回放缓存
             action_queues = [deque(maxlen=50) for _ in range(env_num)]

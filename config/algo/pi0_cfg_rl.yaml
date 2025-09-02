@@ -29,6 +29,7 @@ env_runner:
   num_parallel_envs: ${algo.num_parallel_envs}
   max_episode_length: ${algo.max_episode_length}
   task_names_to_use: ${task.task_names_to_use}
+  num_steps_wait: 10  # 额外等待步数，可被命令行覆盖
 
 rollout_generator_factory:
   _target_: ript.algos.rl_optimizers.rollout_generator.RolloutGenerator
