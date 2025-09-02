@@ -30,6 +30,7 @@ class PI0Policy(PreTrainedPolicy):
         self,
         config: PI0Config,
         tokenizer_path: str = "google/paligemma-3b-pt-224",
+        condition_mode: str = "bias",
     ):
         """
         Args:
@@ -41,6 +42,8 @@ class PI0Policy(PreTrainedPolicy):
         self.config = config
         self.language_tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
         self.model = PI0FlowMatching(config)
+        # 允许从上层选择条件注入模式："bias" 或 "token"
+        self.model.condition_mode = condition_mode
         self.reset()
 
     def reset(self):
@@ -101,8 +104,9 @@ class PI0Policy(PreTrainedPolicy):
         time = batch.get("time", None)
 
         loss_dict = {}
+        is_positive = batch.get("is_positive", None)
         losses = self.model.forward(
-            images, img_masks, lang_tokens, lang_masks, state, actions, noise, time
+            images, img_masks, lang_tokens, lang_masks, state, actions, noise, time, is_positive=is_positive
         )
 
         actions_is_pad = batch.get("action_is_pad", None)
@@ -293,6 +297,10 @@ class PI0FlowMatching(nn.Module):
             self.config.proj_width, self.config.proj_width
         )
 
+        # CFG 条件嵌入（is_positive ∈ {0,1}）
+        self.cond_embed = nn.Embedding(2, self.config.proj_width)
+        self.cond_proj = nn.Linear(self.config.proj_width, self.config.proj_width)
+
         self.set_requires_grad()
 
     def set_requires_grad(self):
@@ -346,7 +354,7 @@ class PI0FlowMatching(nn.Module):
         )
         return embs, pad_masks, att_masks
 
-    def embed_suffix(self, state, noisy_actions, timestep):
+    def embed_suffix(self, state, noisy_actions, timestep, is_positive=None):
         """Embed state, noisy_actions, timestep to prepare for Expert Gemma processing.
 
         Args:
@@ -379,21 +387,41 @@ class PI0FlowMatching(nn.Module):
         action_time_emb = self.action_time_mlp_in(action_time_emb)
         action_time_emb = F.silu(action_time_emb)  # swish == silu
         action_time_emb = self.action_time_mlp_out(action_time_emb)
-        action_time_dim = action_time_emb.shape[1]
 
-        # Add to input tokens
-        embs = torch.cat([state_emb[:, None], action_time_emb], dim=1)
-        pad_masks = torch.ones(
-            (bsize, action_time_dim + 1), device=device, dtype=torch.bool
-        )
+        # 条件注入：两种模式 bias/token
+        mode = getattr(self, 'condition_mode', 'bias')
+        if is_positive is not None and isinstance(is_positive, torch.Tensor):
+            if is_positive.dim() == 0:
+                is_positive = is_positive[None]
+            cond_vec = self.cond_proj(self.cond_embed(is_positive.long()))  # (B,D)
+        else:
+            cond_vec = None
 
-        # Set attention masks for suffix tokens so that prefix tokens cannot attend to suffix tokens.
-        # And state token cannot attend action tokens.
-        # Action tokens use a bidirectional attention.
-        att_masks = torch.zeros(
-            (bsize, action_time_dim + 1), device=device, dtype=torch.bool
-        )
-        att_masks[:, :2] = True
+        if mode == 'token' and cond_vec is not None:
+            # 作为单独条件 token 插入到 state token 之前
+            cond_token = cond_vec.unsqueeze(1)  # (B,1,D)
+            embs = torch.cat([cond_token, state_emb[:, None], action_time_emb], dim=1)
+            seq_len = 1 + 1 + action_time_emb.shape[1]
+            pad_masks = torch.ones((bsize, seq_len), device=device, dtype=torch.bool)
+            att_masks = torch.zeros((bsize, seq_len), device=device, dtype=torch.bool)
+            # 规则：
+            # 0: cond token；1: state token；2..: action tokens
+            # prefix 不可看 suffix 逻辑由外层拼接实现；suffix 内：state 不看 action，action 双向
+            att_masks[:, :3] = True  # 让 cond/state 形成一个小前缀块
+        else:
+            # 默认 bias：把条件向量加到动作时间特征
+            if cond_vec is not None:
+                cond = cond_vec.unsqueeze(1).expand(-1, action_time_emb.shape[1], -1)
+                action_time_emb = action_time_emb + cond
+            action_time_dim = action_time_emb.shape[1]
+            embs = torch.cat([state_emb[:, None], action_time_emb], dim=1)
+            pad_masks = torch.ones(
+                (bsize, action_time_dim + 1), device=device, dtype=torch.bool
+            )
+            att_masks = torch.zeros(
+                (bsize, action_time_dim + 1), device=device, dtype=torch.bool
+            )
+            att_masks[:, :2] = True
 
         return embs, pad_masks, att_masks
 
@@ -407,6 +435,7 @@ class PI0FlowMatching(nn.Module):
         actions,
         noise=None,
         time=None,
+        is_positive=None,
     ) -> Tensor:
         bsize = state.shape[0]
         dtype = state.dtype
@@ -432,7 +461,7 @@ class PI0FlowMatching(nn.Module):
             images, img_masks, lang_tokens, lang_masks
         )
         suffix_embs, suffix_pad_masks, suffix_att_masks = self.embed_suffix(
-            state, x_t, time
+            state, x_t, time, is_positive=is_positive
         )
 
         pad_masks = torch.cat([prefix_pad_masks, suffix_pad_masks], dim=1)
@@ -504,8 +533,11 @@ class PI0FlowMatching(nn.Module):
 
     def predict_velocity(self, state, prefix_pad_masks, past_key_values, x_t, timestep):
         """predict velocity at time t using the suffix model."""
+        # 推理时：若为 token 模式，默认使用正向条件 token（is_positive=1）；
+        # 其他模式保持无条件以维持兼容性。
+        infer_pos = 1 if getattr(self, 'condition_mode', 'bias') == 'token' else None
         suffix_embs, suffix_pad_masks, suffix_att_masks = self.embed_suffix(
-            state, x_t, timestep
+            state, x_t, timestep, is_positive=infer_pos
         )
 
         suffix_len = suffix_pad_masks.shape[1]

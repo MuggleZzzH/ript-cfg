@@ -50,6 +50,7 @@ LOG_FILE="${LOG_DIR}/train_run_${TIMESTAMP}.log"
 
     # --- 步骤 4: 设置环境变量 ---
     echo "--- 步骤 4: 设置必要的环境变量 ---"
+    export PI0_VERBOSE=1
     export HYDRA_FULL_ERROR=1
     export PYTHONPATH=$PYTHONPATH:"$PROJECT_ROOT/LIBERO":"$PROJECT_ROOT"
     export HF_ENDPOINT=https://hf-mirror.com

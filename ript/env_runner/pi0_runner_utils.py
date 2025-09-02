@@ -37,8 +37,9 @@ def quat2axisangle_np(q: np.ndarray) -> np.ndarray:
 
 
 def build_pi0_observation(raw_obs: Dict[str, Any], task_description: str, state_mean: np.ndarray, state_std: np.ndarray) -> Dict[str, Any]:
-    base = raw_obs.get("agentview_image")
-    wrist = raw_obs.get("robot0_eye_in_hand_image")
+    # 键名兜底：同时兼容 *_image 与 *_rgb
+    base = raw_obs.get("agentview_image", raw_obs.get("agentview_rgb"))
+    wrist = raw_obs.get("robot0_eye_in_hand_image", raw_obs.get("eye_in_hand_rgb"))
     if base is None:
         base = np.ones((224, 224, 3), dtype=np.uint8) * 128
     if wrist is None:
@@ -58,6 +59,10 @@ def build_pi0_observation(raw_obs: Dict[str, Any], task_description: str, state_
 
     base = to_hwc_uint8(base)
     wrist = to_hwc_uint8(wrist)
+
+    # 图像方向对齐（LIBERO 常见预处理：180 度旋转）
+    base = base[::-1, ::-1].copy()
+    wrist = wrist[::-1, ::-1].copy()
 
     unnorm_state = extract_state_8d(raw_obs)
     state = (unnorm_state - state_mean) / (state_std + 1e-6)
