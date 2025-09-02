@@ -1,4 +1,5 @@
 import einops
+import os
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -40,7 +41,13 @@ class PI0Policy(PreTrainedPolicy):
 
         super().__init__(config)
         self.config = config
-        self.language_tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        # 支持离线加载：当设置 TRANSFORMERS_OFFLINE/HF_HUB_OFFLINE 时使用本地缓存
+        local_only = str(os.environ.get("TRANSFORMERS_OFFLINE", "0")) in ("1", "true", "True") or str(os.environ.get("HF_HUB_OFFLINE", "0")) in ("1", "true", "True")
+        try:
+            self.language_tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, local_files_only=local_only)
+        except Exception:
+            # 回退：若联网失败，强制本地
+            self.language_tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, local_files_only=True)
         self.model = PI0FlowMatching(config)
         # 允许从上层选择条件注入模式："bias" 或 "token"
         self.model.condition_mode = condition_mode
@@ -301,6 +308,14 @@ class PI0FlowMatching(nn.Module):
         self.cond_embed = nn.Embedding(2, self.config.proj_width)
         self.cond_proj = nn.Linear(self.config.proj_width, self.config.proj_width)
 
+        # CFG concat 模式：在通道维与 action/time 拼接后再融合到 2D
+        self.cond_concat_dim = int(getattr(self.config, "cond_concat_dim", 32))
+        self.cond_embed_concat = nn.Embedding(2, self.cond_concat_dim)
+        self.action_time_concat_fuser = nn.Linear(
+            self.config.proj_width * 2 + self.cond_concat_dim,
+            self.config.proj_width * 2,
+        )
+
         self.set_requires_grad()
 
     def set_requires_grad(self):
@@ -388,7 +403,7 @@ class PI0FlowMatching(nn.Module):
         action_time_emb = F.silu(action_time_emb)  # swish == silu
         action_time_emb = self.action_time_mlp_out(action_time_emb)
 
-        # 条件注入：两种模式 bias/token
+        # 条件注入：三种模式 bias/token/concat
         mode = getattr(self, 'condition_mode', 'bias')
         if is_positive is not None and isinstance(is_positive, torch.Tensor):
             if is_positive.dim() == 0:
@@ -408,6 +423,26 @@ class PI0FlowMatching(nn.Module):
             # 0: cond token；1: state token；2..: action tokens
             # prefix 不可看 suffix 逻辑由外层拼接实现；suffix 内：state 不看 action，action 双向
             att_masks[:, :3] = True  # 让 cond/state 形成一个小前缀块
+        elif mode == 'concat':
+            # 通道级拼接：在 [action_emb, time_emb, cond_emb(32)] 上拼接后，经线性压回到 2D
+            cond32 = self.cond_embed_concat((is_positive.long() if isinstance(is_positive, torch.Tensor) else torch.zeros((bsize,), dtype=torch.long, device=device)))
+            # cond32: (B,32) → 重复到每个动作步 (B,T,32)
+            cond32 = cond32.unsqueeze(1).expand(-1, action_emb.shape[1], -1)
+            at_concat = torch.cat([action_emb, time_emb, cond32], dim=-1)
+            at_fused = self.action_time_concat_fuser(at_concat)
+            # 重新走 MLP (保持与原pipeline一致)：
+            action_time_emb = self.action_time_mlp_in(at_fused)
+            action_time_emb = F.silu(action_time_emb)
+            action_time_emb = self.action_time_mlp_out(action_time_emb)
+            action_time_dim = action_time_emb.shape[1]
+            embs = torch.cat([state_emb[:, None], action_time_emb], dim=1)
+            pad_masks = torch.ones(
+                (bsize, action_time_dim + 1), device=device, dtype=torch.bool
+            )
+            att_masks = torch.zeros(
+                (bsize, action_time_dim + 1), device=device, dtype=torch.bool
+            )
+            att_masks[:, :2] = True
         else:
             # 默认 bias：把条件向量加到动作时间特征
             if cond_vec is not None:

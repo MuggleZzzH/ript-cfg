@@ -63,6 +63,17 @@ class PI0_OFT_Policy:
         except Exception as e:
             raise RuntimeError(f"Failed to load PI0Policy: {e}")
 
+        # 允许通过 kwargs 配置条件注入模式（bias/concat/token）
+        condition_mode = kwargs.get("condition_mode", None)
+        if condition_mode is not None:
+            try:
+                if hasattr(self.model, "model") and hasattr(self.model.model, "condition_mode"):
+                    self.model.model.condition_mode = condition_mode
+                elif hasattr(self.model, "condition_mode"):
+                    setattr(self.model, "condition_mode", condition_mode)
+            except Exception:
+                pass
+
         self.model.to(self.device)
         self.model.eval()
 
@@ -118,7 +129,7 @@ class PI0_OFT_Policy:
 
     # ===== Inference =====
     @torch.inference_mode()
-    def select_action(self, observation: Dict[str, Any], cfg_scale: float = 1.0):
+    def select_action(self, observation: Dict[str, Any], cfg_scale: float = 1.0, is_positive_infer: Optional[int] = None):
         """
         返回标准化动作序列 (B, 50, 7)。
         - 输入 observation:
@@ -184,7 +195,7 @@ class PI0_OFT_Policy:
             start_ts.record()
 
         # PI0 前向：得到 (B, 50, D)，截取前7维为动作维度
-        actions = self.model.select_action(batch)
+        actions = self.model.select_action(batch, cfg_scale=cfg_scale, is_positive_infer=is_positive_infer)
 
         if end_ts is not None:
             end_ts.record()

@@ -6,6 +6,7 @@ policy:
   device_id: 0
   norm_stats_path: ${algo.norm_stats_path}
   pretrained_path: /zhaohan/ZJH/openpi_pytorch/checkpoints/pi0_libero_pytorch
+  condition_mode: token  # 可选: bias|concat|token
 
 optimizer_factory:
   _target_: torch.optim.AdamW
@@ -78,6 +79,11 @@ rollout_stats_path: null
 alpha_uncond: 0.1
 stride: 1
 max_windows_per_episode: null
+
+# 推理默认（可被环境变量覆盖：PI0_CFG_SCALE / PI0_IS_POSITIVE）
+inference:
+  cfg_scale: 1.0
+  is_positive_infer: null
 
 dataset:
   seq_len: 600
