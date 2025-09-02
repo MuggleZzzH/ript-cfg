@@ -3,8 +3,14 @@ PI0 policy wrapper integrated with openpi_pytorch.pi0.PI0Policy.
 
 Contract:
 - self.model: underlying PI0Policy (optionally DDP-wrapped by train script)
-- self.trainable_params: {'model': [...], 'header': [...]} for two optim groups
+- self.trainable_params:
+    - 'model': main body params (excludes a small "header" subset)
+    - 'header': small, meaningful subset (action_out_proj) for optional second optim group
 - select_action(): returns normalized actions (B, 50, 7). Runner做反归一化与绝对化。
+
+Note on "header":
+- 之前用过 dummy 线性层占位，为兼容双优化器脚本。现改为使用 PI0 真正的动作输出头 `action_out_proj`，更合理。
+- 若该模块不可用，自动回退到单组参数（不创建 header 组）。
 """
 
 from typing import Any, Dict, Optional
@@ -77,18 +83,27 @@ class PI0_OFT_Policy:
         self.model.to(self.device)
         self.model.eval()
 
-        # 2) Dummy heads to satisfy train script's optimizer/header saving contract
-        #    - 保证 header 组非空，避免 AdamW 空参数错误
-        self.action_head = nn.Linear(1, 1, bias=False).to(self.device)
-        self.scale_head = nn.Linear(1, 1, bias=False).to(self.device)
+        # 2) Trainable parameter groups (meaningful header):
+        #    - 将 PI0 的动作输出投影头(action_out_proj)作为 header 组
+        #    - 其余参数归为 model 组；若未找到该模块，退化为仅 model 组
+        header_params: list[nn.Parameter] = []
+        try:
+            # unwrap if needed
+            core = self.model.model if hasattr(self.model, "model") else self.model
+            if hasattr(core, "action_out_proj"):
+                header_params = [p for p in core.action_out_proj.parameters() if p.requires_grad]
+        except Exception:
+            header_params = []
 
-        # 3) Trainable parameter groups
-        self.trainable_params = {
-            "model": [p for p in self.model.parameters() if p.requires_grad],
-            "header": list(self.action_head.parameters()) + list(self.scale_head.parameters()),
-        }
+        # exclude header params from main group (by id)
+        header_ids = {id(p) for p in header_params}
+        model_params = [p for p in self.model.parameters() if p.requires_grad and id(p) not in header_ids]
 
-        # 4) Simple cfg holder for compatibility
+        self.trainable_params = {"model": model_params}
+        if len(header_params) > 0:
+            self.trainable_params["header"] = header_params
+
+        # 3) Simple cfg holder for compatibility
         class _Cfg:
             def __init__(self) -> None:
                 self.use_film = False
@@ -96,10 +111,10 @@ class PI0_OFT_Policy:
 
         self.cfg = _Cfg()
 
-        # 5) Load normalization stats (state[:8], action[:7])
+        # 4) Load normalization stats (state[:8], action[:7])
         self._load_norm_stats(self.norm_stats_path)
 
-        # 6) Optionally DDP-wrapped by external script. Here we keep plain module.
+        # 5) Optionally DDP-wrapped by external script. Here we keep plain module.
 
     # ===== Normalization =====
     def _load_norm_stats(self, norm_stats_path: Optional[str]) -> None:
@@ -214,6 +229,5 @@ class PI0_OFT_Policy:
         if _verbose:
             print(f"[PI0] action shape={tuple(act.shape)} (B,50,7)")
         return act
-
 
 

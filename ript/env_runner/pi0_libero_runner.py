@@ -169,23 +169,22 @@ class Pi0LiberoRunner:
             indices = np.arange(loop_idx * env_num, (loop_idx + 1) * env_num) % all_init_states.shape[0]
             init_states_ = all_init_states[indices]
 
-            # Robust init: prefer reset(init_states=...), fallback to reset()+set_init_state(...)
+            # SubprocVectorEnv in LIBERO does not pass arbitrary kwargs to underlying ControlEnv.reset.
+            # Use the OpenVLA-compatible path: reset() then set_init_state(...).
             try:
-                env.reset(init_states=init_states_)
-            except Exception as e1:
-                try:
-                    env.reset()
+                env.reset()
+                if hasattr(env, 'set_init_state'):
                     env.set_init_state(init_states_)
-                except Exception as e2:
-                    # Final fallback: default reset, with a warning for visibility
-                    print(
-                        f"[Pi0LiberoRunner] Warning: failed to apply init_states via both reset(init_states=...) and set_init_state(...). "
-                        f"Falling back to default reset. err1={getattr(e1, 'args', e1)}, err2={getattr(e2, 'args', e2)}"
-                    )
-                    try:
-                        env.reset()
-                    except Exception:
-                        pass
+                else:
+                    # If vector env exposes env_method, try broadcasting
+                    if hasattr(env, 'env_method'):
+                        try:
+                            for i in range(init_states_.shape[0]):
+                                env.env_method('set_init_state', init_states_[i:i+1], indices=[i])
+                        except Exception:
+                            pass
+            except Exception as e:
+                print(f"[Pi0LiberoRunner] Warning: reset/set_init_state failed ({getattr(e, 'args', e)}); continuing with default reset only.")
 
             # 回放缓存
             action_queues = [deque(maxlen=50) for _ in range(env_num)]
@@ -342,4 +341,3 @@ class Pi0LiberoRunner:
                 env.close()
             except Exception:
                 pass
-
