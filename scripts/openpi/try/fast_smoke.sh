@@ -18,11 +18,14 @@ echo "[FAST TEST] Project root: $(pwd)"
 source /opt/conda/etc/profile.d/conda.sh && conda activate mix
 
 # --- Env tweaks ---
+export PI0_N_VIDEO=1
+export PI0_VERBOSE=1
+export PI0_VIDEO_DIR=output/videos_pi0
 export HYDRA_FULL_ERROR=1
 export PYTHONPATH=$PYTHONPATH:"$PROJECT_ROOT/LIBERO":"$PROJECT_ROOT"
 export HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-export PI0_DISABLE_INIT_STATES=1  # 快速测试：禁用初始状态设置
+export PI0_DISABLE_INIT_STATES=0  # 快速测试：禁用初始状态设置
 
 # --- Paths (edit if needed) ---
 NORM_STATS=${NORM_STATS:-/zhaohan/ZJH/openpi_pytorch/lerobot_dataset/norm_stats.json}
@@ -30,19 +33,19 @@ PRETRAIN_PATH=${PRETRAIN_PATH:-/zhaohan/ZJH/openpi_pytorch/checkpoints/pi0_liber
 
 # --- Speed knobs (fast defaults) ---
 TRAINING_STEPS=${TRAINING_STEPS:-2}             # total steps; cut=1 will stop after 1 loop
-BATCH_SIZE=${BATCH_SIZE:-1}
+BATCH_SIZE=${BATCH_SIZE:-2}
 RLOO_BATCH=${RLOO_BATCH:-2}
 ROLLOUTS_PER_ENV=${ROLLOUTS_PER_ENV:-2}
-NUM_ENVS=${NUM_ENVS:-1}
-EARLY_STOP_PCT=${EARLY_STOP_PCT:-0.25}
+NUM_ENVS=${NUM_ENVS:-2}
+EARLY_STOP_PCT=${EARLY_STOP_PCT:-1}
 ENABLE_DYNAMIC_SAMPLING=${ENABLE_DYNAMIC_SAMPLING:-false}
-MAX_EP_LEN=${MAX_EP_LEN:-120}
-WAIT_STEPS=${WAIT_STEPS:-2}
-STRIDE=${STRIDE:-50}
-MAX_WINDOWS=${MAX_WINDOWS:-1}
-OPTIMIZER_BATCH=${OPTIMIZER_BATCH:-1}
+MAX_EP_LEN=${MAX_EP_LEN:-100}
+WAIT_STEPS=${WAIT_STEPS:-10}
+STRIDE=${STRIDE:-10}
+MAX_WINDOWS=${MAX_WINDOWS:-5}
+OPTIMIZER_BATCH=${OPTIMIZER_BATCH:-4}
 CONDITION_MODE=${CONDITION_MODE:-token}
-ROLLOUT_ENABLED=${ROLLOUT_ENABLED:-false}
+ROLLOUT_ENABLED=${ROLLOUT_ENABLED:-true}
 
 echo "[FAST TEST] Params: steps=$TRAINING_STEPS, batch=$BATCH_SIZE, rloo=$RLOO_BATCH, rollouts_per_env=$ROLLOUTS_PER_ENV"
 echo "[FAST TEST] Episode: max_len=$MAX_EP_LEN, wait=$WAIT_STEPS; windows: stride=$STRIDE, max=$MAX_WINDOWS"
@@ -55,8 +58,7 @@ s=socket.socket(); s.bind(('',0)); print(s.getsockname()[1]); s.close()
 PY
 )
 
-RANK=0 WORLD_SIZE=1 MASTER_ADDR=localhost MASTER_PORT=$MASTER_PORT \
-python train_ript_pi0.py \
+RANK=0 WORLD_SIZE=1 MASTER_ADDR=localhost MASTER_PORT=$MASTER_PORT python train_ript_pi0.py \
   --config-name=train_base_rl_openvla_oft \
   algo=pi0_cfg_rl \
   algo.norm_stats_path=$NORM_STATS \
@@ -76,6 +78,8 @@ python train_ript_pi0.py \
   algo.rl_optimizer_factory.optimizer_batch_size=$OPTIMIZER_BATCH \
   algo.policy.condition_mode=$CONDITION_MODE \
   rollout.enabled=$ROLLOUT_ENABLED \
+  +rollout.n_video=2 \
+  +rollout.save_videos=true \
   logging.mode=disabled
 
 EXIT_CODE=$?
