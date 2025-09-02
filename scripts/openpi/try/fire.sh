@@ -71,12 +71,14 @@ LOG_FILE="${LOG_DIR}/train_run_${TIMESTAMP}.log"
     
     # === 评测与CFG推理参数 ===
     ROLLOUT_ENABLED=true                 # 是否启用评测
+
     ROLLOUT_INTERVAL=2                  # 评测间隔
     export PI0_CFG_SCALE=2.0             # CFG推理强度 (1.0=无CFG, >1.0=更强条件)
     export PI0_IS_POSITIVE=1             # 推理时条件 (0=负样本, 1=正样本)
     
     # === 环境与并行设置 ===
     NUM_PARALLEL_ENVS=2                  # 并行环境数
+
     ROLLOUTS_PER_ENV=16                  # 每环境rollout数
     MAX_EPISODE_LENGTH=300               # 最大episode长度
     

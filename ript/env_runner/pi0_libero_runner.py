@@ -169,11 +169,23 @@ class Pi0LiberoRunner:
             indices = np.arange(loop_idx * env_num, (loop_idx + 1) * env_num) % all_init_states.shape[0]
             init_states_ = all_init_states[indices]
 
-            env.reset()
+            # Robust init: prefer reset(init_states=...), fallback to reset()+set_init_state(...)
             try:
-                env.set_init_state(init_states_)
-            except Exception:
-                pass
+                env.reset(init_states=init_states_)
+            except Exception as e1:
+                try:
+                    env.reset()
+                    env.set_init_state(init_states_)
+                except Exception as e2:
+                    # Final fallback: default reset, with a warning for visibility
+                    print(
+                        f"[Pi0LiberoRunner] Warning: failed to apply init_states via both reset(init_states=...) and set_init_state(...). "
+                        f"Falling back to default reset. err1={getattr(e1, 'args', e1)}, err2={getattr(e2, 'args', e2)}"
+                    )
+                    try:
+                        env.reset()
+                    except Exception:
+                        pass
 
             # 回放缓存
             action_queues = [deque(maxlen=50) for _ in range(env_num)]
@@ -330,5 +342,4 @@ class Pi0LiberoRunner:
                 env.close()
             except Exception:
                 pass
-
 
