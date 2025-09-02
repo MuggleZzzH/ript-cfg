@@ -134,6 +134,9 @@ def main(cfg):
     else:
         logger = None
 
+    # Ensure variable exists even in eval-only mode to avoid UnboundLocalError on cleanup
+    rollout_generator = None
+
     if not cfg.algo.eval_only:
         optimizer_factory = instantiate(cfg.algo.optimizer_factory)
         optimizers = []
@@ -298,7 +301,8 @@ def main(cfg):
 
         dist.barrier()
 
-    rollout_generator.cleanup()
+    if rollout_generator is not None:
+        rollout_generator.cleanup()
 
     if rank == 0:
         print("[info] Finished training")

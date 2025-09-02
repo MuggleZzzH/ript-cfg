@@ -208,8 +208,16 @@ class Pi0LiberoRunner:
 
             def _extract_frame_from_obs(o: Dict[str, Any]) -> np.ndarray | None:
                 try:
-                    base = o.get('agentview_image', o.get('agentview_rgb'))
-                    wrist = o.get('robot0_eye_in_hand_image', o.get('eye_in_hand_rgb'))
+                    # 兼容多种键名（不同版本 / 包装）
+                    base = (
+                        o.get('agentview_image',
+                        o.get('agentview_rgb'))
+                    )
+                    wrist = (
+                        o.get('robot0_eye_in_hand_image',
+                        o.get('robot0_eye_in_hand',
+                        o.get('eye_in_hand_rgb')))
+                    )
                     if base is None or wrist is None:
                         return None
                     base = np.asarray(base)
@@ -340,11 +348,33 @@ class Pi0LiberoRunner:
             # 保存视频（每个 loop 一段）
             if render and frames is not None and len(frames) > 0:
                 ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-                out_path = os.path.join(video_dir, f'{env_name}_loop{loop_idx}_{ts}.mp4')
+                base_name = f'{env_name}_loop{loop_idx}_{ts}'
+                out_mp4 = os.path.join(video_dir, base_name + '.mp4')
+                _verbose = os.environ.get('PI0_VERBOSE', '0') == '1'
+                if _verbose:
+                    try:
+                        print(f"[Runner] saving video: {out_mp4} | frames={len(frames)}")
+                    except Exception:
+                        pass
                 try:
-                    imageio.mimsave(out_path, frames, fps=10)
+                    # 优先保存 mp4（需要 imageio-ffmpeg）
+                    imageio.mimsave(out_mp4, frames, fps=10)
                 except Exception:
-                    pass
+                    # 若 mp4 失败（常见于缺少 ffmpeg），回退为 gif（无需外部二进制）
+                    out_gif = os.path.join(video_dir, base_name + '.gif')
+                    if _verbose:
+                        try:
+                            print(f"[Runner] mp4 failed; fallback to GIF: {out_gif}")
+                        except Exception:
+                            pass
+                    try:
+                        imageio.mimsave(out_gif, frames, duration=0.1)
+                    except Exception:
+                        if _verbose:
+                            try:
+                                print(f"[Runner] gif save failed; skipping video for this loop")
+                            except Exception:
+                                pass
 
             # 逐 env 产出一次 rollouts（平均 reward / success）
             for k in range(env_num):

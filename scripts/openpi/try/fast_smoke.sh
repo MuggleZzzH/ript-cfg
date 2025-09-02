@@ -21,6 +21,7 @@ source /opt/conda/etc/profile.d/conda.sh && conda activate mix
 export PI0_N_VIDEO=2
 export PI0_VERBOSE=1
 export PI0_VIDEO_DIR=output/videos_pi0
+mkdir -p "$PI0_VIDEO_DIR" || true
 export HYDRA_FULL_ERROR=1
 export PYTHONPATH=$PYTHONPATH:"$PROJECT_ROOT/LIBERO":"$PROJECT_ROOT"
 export HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
@@ -46,7 +47,7 @@ MAX_WINDOWS=${MAX_WINDOWS:-5}
 OPTIMIZER_BATCH=${OPTIMIZER_BATCH:-4}
 CONDITION_MODE=${CONDITION_MODE:-token}
 ROLLOUT_ENABLED=${ROLLOUT_ENABLED:-true}
-EVAL_ONLY=${EVAL_ONLY:-false}
+EVAL_ONLY=${EVAL_ONLY:-true}
 
 echo "[FAST TEST] Params: steps=$TRAINING_STEPS, batch=$BATCH_SIZE, rloo=$RLOO_BATCH, rollouts_per_env=$ROLLOUTS_PER_ENV"
 echo "[FAST TEST] Episode: max_len=$MAX_EP_LEN, wait=$WAIT_STEPS; windows: stride=$STRIDE, max=$MAX_WINDOWS"
