@@ -335,9 +335,58 @@ class Pi0LiberoRunner:
                     done_flags[i] = bool(di)
                     success_flags[i] = success_flags[i] or done_flags[i]
 
-                # 记录视频帧（仅并行环境0）
-                if render and isinstance(obs, (list, tuple)) and len(obs) > 0 and frames is not None:
-                    frame = _extract_frame_from_obs(obs[0])
+                # 记录视频帧（仅并行环境0），优先用 env.render()，否则从 obs 抽取
+                if render and frames is not None:
+                    frame = None
+                    # 1) Try env.render (works for many LIBERO wrappers)
+                    try:
+                        fr = env.render()
+                        if isinstance(fr, (list, tuple)) and len(fr) > 0:
+                            fr = fr[0]
+                        if fr is not None:
+                            fr = np.asarray(fr)
+                            if fr.dtype != np.uint8:
+                                if fr.max() <= 1.0:
+                                    fr = (fr * 255.0).clip(0, 255).astype(np.uint8)
+                                else:
+                                    fr = fr.astype(np.uint8)
+                            frame = fr
+                    except Exception:
+                        pass
+                    # 2) Fallback: extract from obs structure
+                    if frame is None:
+                        if isinstance(obs, (list, tuple)) and len(obs) > 0:
+                            frame = _extract_frame_from_obs(obs[0])
+                        elif isinstance(obs, dict):
+                            try:
+                                base = obs.get('agentview_image', obs.get('agentview_rgb'))
+                                wrist = obs.get('robot0_eye_in_hand_image', obs.get('eye_in_hand_rgb'))
+                                # Support dict-of-batch: take env 0 if batched
+                                if isinstance(base, np.ndarray) and base.ndim == 4:
+                                    base = base[0]
+                                if isinstance(wrist, np.ndarray) and wrist.ndim == 4:
+                                    wrist = wrist[0]
+                                if base is not None:
+                                    base = np.asarray(base)
+                                    if base.dtype != np.uint8:
+                                        if base.max() <= 1.0:
+                                            base = (base * 255.0).clip(0, 255).astype(np.uint8)
+                                        else:
+                                            base = base.astype(np.uint8)
+                                    if wrist is not None:
+                                        wrist = np.asarray(wrist)
+                                        if wrist.dtype != np.uint8:
+                                            if wrist.max() <= 1.0:
+                                                wrist = (wrist * 255.0).clip(0, 255).astype(np.uint8)
+                                            else:
+                                                wrist = wrist.astype(np.uint8)
+                                        h = min(base.shape[0], wrist.shape[0])
+                                        w = min(base.shape[1], wrist.shape[1])
+                                        frame = np.concatenate([base[:h, :w], wrist[:h, :w]], axis=1)
+                                    else:
+                                        frame = base
+                            except Exception:
+                                frame = None
                     if frame is not None:
                         frames.append(frame)
 
