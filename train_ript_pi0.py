@@ -1,6 +1,8 @@
 import os
 os.environ["NCCL_TIMEOUT"] = "108000"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+# 修复tokenizers并行化警告
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import datetime
 import time
 

@@ -7,6 +7,7 @@
 - train_ript_pi0.py
   - 训练/评估主入口。
   - 不再强制覆盖 eval runner 的 max_episode_length，尊重配置/CLI。
+  - 设置环境变量：TOKENIZERS_PARALLELISM=false（抑制tokenizers并行化fork警告）。
 
 - config/algo/pi0_cfg_rl.yaml
   - PI0 + CFG-Flow 主配置。
@@ -17,6 +18,7 @@
 - ript/env_runner/pi0_libero_runner.py
   - 真实环境评估与 rollouts 逻辑。
   - 支持 WAIT_STEPS、视频帧抓取源切换（PI0_RENDER_SOURCE）、多键名观测兼容。
+  - 当 num_parallel_envs>1 时强制 multiprocessing 使用 spawn；添加调试打印当前start_method。
 
 - ript/algos/policies/pi0_oft_policy.py
   - PI0Policy 封装；从本地加载 tokenizer/model，支持 (B,H,W,C)->(B,C,H,W)。

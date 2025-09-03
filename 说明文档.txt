@@ -37,4 +37,146 @@ PI0 + CFG-Flow 本地/离线运行说明（简版）
 更新记录（重要变更）
 - 评估长度控制：去掉 train_ript_pi0.py 中对 eval runner 的 max_episode_length=None 强制覆盖，评估长度可由 CLI/hydra 控制。
 - Runner 改进：pi0_libero_runner.py 支持 WAIT_STEPS、视频抓帧源切换、首帧观测路径更安全等。
+- 多进程与tokenizers对齐：
+  - 在 pi0_libero_runner.py 的 __init__ 中，当 num_parallel_envs>1 时，若 start_method 非 spawn，强制设置为 spawn，并打印当前 start_method（便于日志确认）。
+  - 在 train_ript_pi0.py 顶部设置环境变量 TOKENIZERS_PARALLELISM=false，避免第三方在 fork 后启用并行导致的警告。
+  - 实测日志：出现
+    - "[PI0Runner] num_parallel_envs=2, current_method=None"，随后
+    - "[PI0Runner] Setting multiprocessing start method to spawn (was None)"，
+    表明 spawn 已在运行时生效；同时未再出现 tokenizers fork 警告。
+
+七、训练侧与原版CFGRL对齐结论（分析）
+- 结论：训练思想与原版CFGRL（IQL Diffusion的CFG-RL）对齐，但实现并非逐行等价。主要差异：
+  1) 目标函数：原版是velocity MSE；本实现为Flow Matching（FM）损失。
+  2) 优势加权：支持二值/连续两种方式；连续模式未做归一化/温度缩放（可能导致尺度敏感）。
+  3) 分支组合：训练阶段分别优化pos/uncond，推理时做CFG混合；原版训练阶段亦显式体现场景混合。
+  4) 权重粒度：当前将同一episode的adv复制到其所有窗口与时间步；可能掩盖时序内差异。
+  5) 无条件分支：恒定α_uncond参与，与优势无关；在劣质样本上可能引入额外噪声。
+- 与RIPT集成层面的已知影响点：
+  - 图像处理与等待步数、分辨率、multiprocessing等细节会影响rollout质量，从而影响adv估计与训练信号（均已逐项排查并修复/列入待办）。
+  - 综合判断：训练侧“理念对齐、实现有差异”；更大问题往往来自集成与前端数据质量/一致性。
+
+八、CFG 条件嵌入（cfgemb）方式对比与合理性分析
+- 原版（iql_diffusion.py）
+  - 使用二类嵌入：`nn.Embed(2, 32)(is_positive)`，与 `obs/noised_action/timestep` 一起拼接输入MLP，直接影响速度场预测。
+  - 无条件与正向均显式传入 is_positive∈{0,1}，即使 cfg=1.0 时，计算 `v = v_uncond + 1*(v_pos - v_uncond) = v_pos`。
+- 本实现（modeling_pi0.py::embed_suffix）
+  - 三种模式：
+    1) token：将 `cond_vec` 作为独立token插入到suffix序列最前，与state/action-time通过注意力交互（更强表达力）。
+    2) concat：将 `cond_embed_concat(2→32)` 复制到每个时间步并与 action/time 拼接后再线性融合（与原版“拼接”更接近）。
+    3) bias（默认）：将 `cond_vec` 以加法偏置方式加到每个时间步的 action_time_emb 上（FiLM风格）。
+  - 训练阶段：pos/uncond 两分支都显式传入 is_positive∈{0,1}，与原版一致。
+  - 推理阶段：
+    - 若 cfg_scale != 1.0：显式计算 `v_uncond` 与 `v_pos` 并做 `v_uncond + cfg*(v_pos - v_uncond)`，与原版一致。
+    - 若 cfg_scale == 1.0：不走双分支。默认行为：
+      - condition_mode == token → 使用正向分支（等价原版）。
+      - 其他模式（如 bias）→ 使用“无条件”（pos_flag=None），与原版 `v_pos` 存在偏差。
+- 关键差异与潜在影响：
+  1) 单分支 cfg=1.0 语义偏差：原版等价 `v_pos`；当前 bias 模式默认走“无条件”。
+  2) 无条件语义不一致：训练的 uncond 使用 is_positive=0 的嵌入；而推理在 bias 模式下 pos_flag=None → 彻底“无嵌入”，存在分布偏移风险。
+  3) 注入位置不同：原版是特征拼接到MLP输入；我们可选 token/concat/bias，其中 token 借助注意力可能更强，但与原始等价性较弱；concat 更贴近原版。
+  4) 表达能力与稳定性：token 模式表达力强但更依赖注意力与mask设计；bias更轻量但可能不如concat直观表达分类条件。
+- 建议：
+  - 评测/推理严格对齐原版：
+    1) cfg_scale==1.0 时使用正向分支（或设置 condition_mode=token 保持等价）。
+    2) 若选择 bias 模式，推理无条件也应显式使用 is_positive=0（而非 None），避免训练/推理分布偏移。
+  - 若追求与原版语义最接近，优先使用 concat 模式；如需更强表达力与跨步交互，可用 token 模式。
+
+九、未经过CFG训练的模型启用双分支推理的影响与建议
+- 现象：直接对“未按CFG训练”的模型启用双分支/CFG混合，常出现成功率下降、动作抖动或收敛变慢，导致数据收集质量变差。
+- 原因：
+  1) 无条件分支未充分训练或语义未成型，`v_uncond` 与 `v_pos` 差异不可控；
+  2) 推理混合 `v = v_uncond + cfg*(v_pos - v_uncond)` 放大了未对齐的分支差异；
+  3) 若训练端与推理端使用的 `condition_mode`/is_positive 标志不一致，会引入分布偏移。
+- 建议：
+  1) 数据收集/早期评估：关闭双分支与CFG混合（`PI0_ENABLE_DUAL=0`，`PI0_CFG_SCALE=1.0`），先确保单分支性能稳定；
+  2) 若需启用CFG：先在训练端显式训练正/无条件两分支（本实现已在优化器内分别前向pos/uncond），并保证推理端与训练端 `condition_mode` 一致；
+  3) 初启用CFG时使用小/中等 `cfg_scale ∈ [1.5, 3.0]`，并监控成功率与动作平滑度；
+  4) 在 bias 模式下，推理“无条件”应显式传 `is_positive_infer=0`，避免与训练端“无条件”语义不一致；cfg=1.0 时建议走正向分支或切换到 token 模式。
+
+十、CFG scale 的作用域（原版与本实现）
+- 原版 iql_diffusion.py：
+  - `cfg` 仅在 `sample_actions` / 评估环节使用，用于推理时的 `v = v_uncond + cfg*(v_pos - v_uncond)` 混合；
+  - 训练 `update()` 内的 `actor_loss` / `critic_loss` / `value_loss` 不读取 `cfg`，因此 `cfg` 不影响训练。
+- 本实现（PI0）：
+  - `cfg_scale` 仅用于 `sample_actions` 推理阶段；
+  - 训练阶段优化器分别前向正/无条件分支并组合损失，未读取 `cfg_scale`。
+
+十一、Diffusion vs Flow Matching：差异与迁移要点
+- 概念与目标：
+  - Diffusion（此处指 iql_diffusion 实现）：名义上“扩散”，但Actor损失本质是基于 x_t = (1−t)x0 + t x1 与 vel = x1−x0 的速度回归，实操更接近 FM；
+  - Flow Matching（PI0）：显式构造向量场预测，训练/推理都走确定性欧拉积分；
+  - 结论：两者推理时的 CFG 合成公式一致（uncond + cfg*(pos−uncond)），关键在于时间采样/噪声参数化/损失定义的一致性。
+- 需要注意的处理差异：
+  1) 时间步与积分方向：
+     - iql_diffusion 常用 dt=+1/denoise_steps，自 0→1；
+     - 本实现 sample_actions 用 dt=−1/num_steps，自 1→0；迁移时必须保证“训练时 t 的采样分布与推理积分方向/步长”一致。
+  2) 向量场/速度定义：
+     - iql_diffusion 中 actor 预测的是 vel；
+     - PI0 中 forward 用 u_t/noise 定义，predict_velocity 产出 v_t；若直接照搬diffusion代码，需核对符号/尺度是否匹配（否则会表现抖动或漂移）。
+  3) 条件嵌入位置：
+     - iql_diffusion：将 is_positive 的嵌入与 [obs, noised_action, t] 拼接进入 MLP；
+     - PI0：提供 token/concat/bias 三种模式。想与原版语义最接近，优先用 concat；token 表达更强但等价性更弱；bias 轻量但表达力较弱。
+  4) 无条件分支定义：
+     - iql_diffusion：uncond=同输入+is_positive=0；
+     - 某些CFGRL：用“unc_embed”替换目标形成真正的无条件；
+     - 迁移时务必统一“无条件”的语义，并在推理端显式传 is_positive=0，避免训练/推理分布偏移。
+  5) 训练期是否显式CFG：
+     - iql_diffusion：训练期不使用 cfg 系数，但正/无条件两支同时被优化；
+     - PI0：同样不读取 cfg_scale，但也要确保两支都得到充分训练再在推理端混合。
+- 迁移清单（从 diffusion 风格到 PI0 FM）：
+  - 对齐时间：确保 t 采样与推理积分方向/步长一致；
+  - 对齐符号/尺度：检查 x_t/vel/u_t/v_t 的定义与损失是否一致；
+  - 选择嵌入模式：优先 concat 保守等价；如用 bias，推理“无条件”必须显式 is_positive=0；
+  - CFG 仅在推理生效：训练先以 cfg=1.0 稳定单支，再小幅调大；
+  - 避免引入 diffusion 专属的温度/随机采样/score缩放等与 FM 不兼容的细节。
+
+十二、是否需要同步到 CFGRLAgent 的处理方式（结论与触发条件）
+- 结论：无需立刻完全同步。先把现有 PI0/FM 管线按参考脚本对齐并稳定（图像方向、等待步数、分辨率、spawn 等）。
+- 何时考虑同步（或部分引入思想）：
+  1) 发现“未CFG训练的模型”在推理端 cfg>1 时性能明显下降，且无条件分支表现弱；
+  2) 希望获得“更纯粹”的无条件能力（训练时显式条件 dropout），并降低对价值/优势估计的依赖；
+  3) 需要在视觉/目标条件缺失场景下仍保持稳定的向量场（unc_embed 风格）。
+- 渐进式替代建议（最小改动优先）：
+  - 方案A（推荐先做）：保持现有优化器框架，增加“训练期小概率将 is_positive=0 并清空/占位 prompt”的条件dropout，增强无条件分支；
+  - 方案B（若追求与原版拼接语义等价）：切换到 concat 条件注入模式；
+  - 方案C（完整迁移）：采用 CFGRLAgent 的 unc_embed 与 flow_steps 框架，代价较高，不建议在未稳定基线前进行。
+
+十三、在 Flow Matching（FM）版本中引入优势加权（可选增强）
+十四、CFGRL 与 IQL Diffusion 的训练/推理路径对照（代码导航）
+- cfgrl/ogbench/agents/cfgrl.py（CFGRLAgent，FM范式）
+  - 训练：
+    - update → total_loss → actor_loss
+    - actor_loss：采样 x0/x1/t → x_t, vel；10% 条件 dropout（do_cfg）用 unc_embed 替代 goals；pred = actor_flow(..., goals)；loss = MSE(pred, vel)
+    - 特点：无 critic/value；无优势加权（可选扩展）；训练不读取 cfg
+  - 推理：
+    - sample_actions：可选 encoder；初始化 actions；for i in flow_steps：
+      - t=i/flow_steps；unc_vels=actor_flow(..., goals=unc_embed)；cond_vels=actor_flow(..., goals)
+      - vels = unc_vels + cfg*(cond_vels - unc_vels)；actions += vels/flow_steps；最后 clip 到[-1,1]
+    - 特点：cfg 仅影响推理时混合
+
+- cfgrl/rlbase/algs_offline/iql_diffusion.py（IQL + Diffusion 接口）
+  - 训练：
+    - main → agent.update → actor_loss_fn + critic_loss_fn + value_loss_fn
+    - actor_loss_fn：计算 v/q → 得到 (q−v) 的二值优势门控；采样 x0/x1/t → x_t, vel；
+      - 正向：pred_vel_positive，loss 乘以二值优势
+      - 无条件：pred_vel_uncond，loss 乘以 0.1
+    - 特点：有 critic/value 与优势门控；训练不读取 cfg
+  - 推理：
+    - sample_actions：初始化 x；for t in denoise_steps：
+      - v_pos = actor(obs, is_positive=1, x, t)；v_uncond = actor(obs, is_positive=0, x, t)
+      - v = v_uncond + cfg*(v_pos - v_uncond)；x += v*dt；最后 clip 到[-1,1]
+    - 特点：cfg 仅影响推理时混合
+- 可行性：可行。FM 的 actor/向量场损失可乘以基于回报/优势的权重，常见两种：
+  1) 二值优势（与 IQL Diffusion 一致）：`w_pos = 1{adv>0}`；
+  2) 连续优势：`w_pos = clamp(adv, min=0)`，建议做归一化/温度缩放以稳健训练。
+- 典型组合（与当前实现一致的安全做法）：
+  - `L = w_pos * L_pos + α_uncond * L_uncond`，其中 `α_uncond≈0.1`；
+  - 连续优势建议做分位裁剪/归一化（避免极端权重主导）。
+- 引入时的注意事项：
+  1) 优势来源：无 critic 时可用 RLOO（同一demo的K轨迹留一法）或episode回报；有 critic 时可用 (q−v)；
+  2) 语义一致：训练/推理“无条件”要一致（bias 模式下推理显式传 `is_positive=0`，勿用 None）；
+  3) 粒度选择：episode级→窗口级→时间步级，粒度越细实现/开销越高；建议先“窗口级”；
+  4) 稳定性：对连续优势做标准化/温度缩放/分段截断，逐步网格搜索 `α_uncond∈[0.05,0.2]`、`cfg_scale∈[1.5,3.0]`；
+  5) CFG 仍仅影响推理；训练不读取 `cfg_scale`。
 

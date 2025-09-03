@@ -36,8 +36,13 @@ class Pi0LiberoRunner:
         
         # 与 OpenVLA 对齐：多进程启动方式设置
         if num_parallel_envs > 1:
-            if multiprocessing.get_start_method(allow_none=True) != "spawn":  
+            current_method = multiprocessing.get_start_method(allow_none=True)
+            print(f"[PI0Runner] num_parallel_envs={num_parallel_envs}, current_method={current_method}")
+            if current_method != "spawn":  
+                print(f"[PI0Runner] Setting multiprocessing start method to spawn (was {current_method})")
                 multiprocessing.set_start_method("spawn", force=True)
+            else:
+                print(f"[PI0Runner] multiprocessing already set to spawn")
         
         # 与 OpenVLA 对齐：不同 benchmark 使用不同的默认轨迹上限
         TASK_MAX_STEPS = {
@@ -426,11 +431,11 @@ class Pi0LiberoRunner:
                     except Exception:
                         pass
                 try:
-                    imageio.mimsave(out_mp4, frames, fps=10)
+                    imageio.mimsave(out_mp4, frames, fps=30)
                     print(f"[Pi0LiberoRunner] Saved video: {out_mp4}")
                 except Exception as e_mp4:
                     try:
-                        imageio.mimsave(out_gif, frames, fps=10)
+                        imageio.mimsave(out_gif, frames, fps=30)
                         print(f"[Pi0LiberoRunner] Saved video (gif fallback): {out_gif} | mp4 error={getattr(e_mp4, 'args', e_mp4)}")
                     except Exception as e_gif:
                         out_npz = os.path.join(video_dir, base_name + '.npz')
