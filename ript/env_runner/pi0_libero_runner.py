@@ -4,6 +4,7 @@ PI0 Libero runner with open-loop=50 execution and episode fields aligned with ro
 """
 
 from typing import Any, Dict, Iterable, List, Tuple
+import multiprocessing
 import os
 import numpy as np
 import math
@@ -32,7 +33,25 @@ class Pi0LiberoRunner:
         self.benchmark_name = benchmark_name
         self.rollouts_per_env = rollouts_per_env
         self.num_parallel_envs = num_parallel_envs
-        self.max_episode_length = max_episode_length or 300
+        
+        # 与 OpenVLA 对齐：多进程启动方式设置
+        if num_parallel_envs > 1:
+            if multiprocessing.get_start_method(allow_none=True) != "spawn":  
+                multiprocessing.set_start_method("spawn", force=True)
+        
+        # 与 OpenVLA 对齐：不同 benchmark 使用不同的默认轨迹上限
+        TASK_MAX_STEPS = {
+            "libero_spatial": 220,
+            "libero_object": 280,
+            "libero_goal": 300,
+            "libero_10": 520,
+            "libero_90": 400,
+        }
+        if max_episode_length is None:
+            key = (benchmark_name or "").lower()
+            self.max_episode_length = TASK_MAX_STEPS.get(key, 300)
+        else:
+            self.max_episode_length = max_episode_length
         self.task_names_to_use = task_names_to_use or []
         self.num_steps_wait = num_steps_wait
 

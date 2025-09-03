@@ -32,3 +32,4 @@
 - 等待步数：algo.env_runner.num_steps_wait（fast_smoke.sh 传入 WAIT_STEPS）。
 - 评估视频：PI0_N_VIDEO、PI0_VIDEO_DIR、PI0_RENDER_SOURCE。
 - 本地模型：algo.policy.pretrained_path；norm_stats_path。
+

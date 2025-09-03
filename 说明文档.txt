@@ -37,3 +37,4 @@ PI0 + CFG-Flow 本地/离线运行说明（简版）
 更新记录（重要变更）
 - 评估长度控制：去掉 train_ript_pi0.py 中对 eval runner 的 max_episode_length=None 强制覆盖，评估长度可由 CLI/hydra 控制。
 - Runner 改进：pi0_libero_runner.py 支持 WAIT_STEPS、视频抓帧源切换、首帧观测路径更安全等。
+
