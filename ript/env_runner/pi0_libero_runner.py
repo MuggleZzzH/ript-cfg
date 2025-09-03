@@ -208,8 +208,16 @@ class Pi0LiberoRunner:
 
             def _extract_frame_from_obs(o: Dict[str, Any]) -> np.ndarray | None:
                 try:
-                    base = o.get('agentview_image', o.get('agentview_rgb'))
-                    wrist = o.get('robot0_eye_in_hand_image', o.get('eye_in_hand_rgb'))
+                    # 兼容多种键名（不同版本 / 包装）
+                    base = (
+                        o.get('agentview_image',
+                        o.get('agentview_rgb'))
+                    )
+                    wrist = (
+                        o.get('robot0_eye_in_hand_image',
+                        o.get('robot0_eye_in_hand',
+                        o.get('eye_in_hand_rgb')))
+                    )
                     if base is None or wrist is None:
                         return None
                     base = np.asarray(base)
