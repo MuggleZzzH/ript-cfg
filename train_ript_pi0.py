@@ -183,7 +183,12 @@ def main(cfg):
     if cfg.rollout.enabled:
         num_parallel_envs = cfg.algo.env_runner.num_parallel_envs if hasattr(cfg.algo.env_runner, 'num_parallel_envs') else cfg.algo.num_parallel_envs
         print(f'Eval env num_parallel_envs: {num_parallel_envs}')
-        eval_env_runner = instantiate(cfg.algo.env_runner, task_names_to_use=local_eval_tasks, num_parallel_envs=num_parallel_envs, max_episode_length=None)
+        # Do not override max_episode_length here; honor cfg.algo.env_runner.max_episode_length
+        eval_env_runner = instantiate(
+            cfg.algo.env_runner,
+            task_names_to_use=local_eval_tasks,
+            num_parallel_envs=num_parallel_envs,
+        )
         if cfg.algo.eval_only:
             # Switch to eval if model exposes inner module
             if hasattr(model, 'model') and hasattr(model.model, 'eval'):
