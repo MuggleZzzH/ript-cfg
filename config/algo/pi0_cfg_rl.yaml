@@ -6,7 +6,7 @@ policy:
   device_id: 0
   norm_stats_path: ${algo.norm_stats_path}
   pretrained_path: /zhaohan/ZJH/openpi_pytorch/checkpoints/pi0_libero_pytorch
-  condition_mode: token  # 可选: bias|concat|token
+  condition_mode: bias  # 可选: bias|concat|token
   # PI0 模型训练范围（迁移自代码参数）
   freeze_vision_encoder: true     # 冻结视觉塔
   train_expert_only: false        # 仅训练 Expert 后缀（前缀冻结）

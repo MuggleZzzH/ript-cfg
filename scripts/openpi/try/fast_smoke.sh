@@ -18,8 +18,10 @@ echo "[FAST TEST] Project root: $(pwd)"
 source /opt/conda/etc/profile.d/conda.sh && conda activate mix
 
 # --- Env tweaks ---
+export PI0_DISABLE_DUAL=0
 export PI0_N_VIDEO=1
 export PI0_VERBOSE=1
+export DEBUG_SAVE_PROCESSED=1
 export PI0_VIDEO_DIR=output/videos_pi0
 mkdir -p "$PI0_VIDEO_DIR" || true
 export HYDRA_FULL_ERROR=1
@@ -45,7 +47,7 @@ WAIT_STEPS=${WAIT_STEPS:-10}
 STRIDE=${STRIDE:-10}
 MAX_WINDOWS=${MAX_WINDOWS:-5}
 OPTIMIZER_BATCH=${OPTIMIZER_BATCH:-4}
-CONDITION_MODE=${CONDITION_MODE:-token}
+CONDITION_MODE=${CONDITION_MODE:-bias}
 ROLLOUT_ENABLED=${ROLLOUT_ENABLED:-true}
 EVAL_ONLY=${EVAL_ONLY:-true}
 
