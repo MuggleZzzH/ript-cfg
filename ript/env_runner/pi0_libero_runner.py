@@ -359,8 +359,12 @@ class Pi0LiberoRunner:
                             frame = None
                     # 默认或render失败：从obs抓帧
                     if frame is None:
+                        # Case A: list/tuple of dict obs
                         if isinstance(obs, (list, tuple)) and len(obs) > 0:
-                            frame = _extract_frame_from_obs(obs[0])
+                            candidate = obs[0]
+                            if isinstance(candidate, dict):
+                                frame = _extract_frame_from_obs(candidate)
+                        # Case B: dict of batched arrays
                         elif isinstance(obs, dict):
                             try:
                                 base = obs.get('agentview_image', obs.get('agentview_rgb'))
@@ -378,6 +382,11 @@ class Pi0LiberoRunner:
                                     frame = _extract_frame_from_obs(tmp)
                             except Exception:
                                 frame = None
+                        # Case C: numpy object array of dict obs
+                        elif isinstance(obs, np.ndarray) and obs.dtype == object and obs.size > 0:
+                            cand = obs.flat[0]
+                            if isinstance(cand, dict):
+                                frame = _extract_frame_from_obs(cand)
                     if frame is not None:
                         frames.append(frame)
 
@@ -419,6 +428,8 @@ class Pi0LiberoRunner:
                         last_keys = list(obs[0].keys())
                     elif isinstance(obs, dict):
                         last_keys = list(obs.keys())
+                    elif isinstance(obs, np.ndarray) and obs.dtype == object and obs.size > 0 and isinstance(obs.flat[0], dict):
+                        last_keys = list(obs.flat[0].keys())
                     print(f"[Pi0LiberoRunner] Warning: no frames captured this loop (env={env_name}). Last obs keys={last_keys}")
                 except Exception:
                     pass
