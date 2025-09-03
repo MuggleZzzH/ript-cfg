@@ -340,11 +340,24 @@ class Pi0LiberoRunner:
             # 保存视频（每个 loop 一段）
             if render and frames is not None and len(frames) > 0:
                 ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-                out_path = os.path.join(video_dir, f'{env_name}_loop{loop_idx}_{ts}.mp4')
+                # 优先尝试 mp4，若失败回退为 gif，并在控制台提示
+                out_mp4 = os.path.join(video_dir, f'{env_name}_loop{loop_idx}_{ts}.mp4')
+                out_gif = os.path.join(video_dir, f'{env_name}_loop{loop_idx}_{ts}.gif')
                 try:
-                    imageio.mimsave(out_path, frames, fps=10)
-                except Exception:
-                    pass
+                    imageio.mimsave(out_mp4, frames, fps=10)
+                    print(f"[Pi0LiberoRunner] Saved video: {out_mp4}")
+                except Exception as e_mp4:
+                    try:
+                        imageio.mimsave(out_gif, frames, fps=10)
+                        print(f"[Pi0LiberoRunner] Saved video (gif fallback): {out_gif} | mp4 error={getattr(e_mp4, 'args', e_mp4)}")
+                    except Exception as e_gif:
+                        # 最终回退：保存为 numpy 数组便于排查
+                        out_npz = os.path.join(video_dir, f'{env_name}_loop{loop_idx}_{ts}.npz')
+                        try:
+                            np.savez_compressed(out_npz, frames=np.asarray(frames))
+                            print(f"[Pi0LiberoRunner] Saved frames as npz: {out_npz} | mp4 error={getattr(e_mp4, 'args', e_mp4)}, gif error={getattr(e_gif, 'args', e_gif)}")
+                        except Exception as e_npz:
+                            print(f"[Pi0LiberoRunner] Warning: failed to save video/frames. mp4={getattr(e_mp4, 'args', e_mp4)}, gif={getattr(e_gif, 'args', e_gif)}, npz={getattr(e_npz, 'args', e_npz)}")
 
             # 逐 env 产出一次 rollouts（平均 reward / success）
             for k in range(env_num):
