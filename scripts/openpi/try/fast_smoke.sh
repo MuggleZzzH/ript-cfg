@@ -18,7 +18,7 @@ echo "[FAST TEST] Project root: $(pwd)"
 source /opt/conda/etc/profile.d/conda.sh && conda activate mix
 
 # --- Env tweaks ---
-export PI0_N_VIDEO=2
+export PI0_N_VIDEO=1
 export PI0_VERBOSE=1
 export PI0_VIDEO_DIR=output/videos_pi0
 mkdir -p "$PI0_VIDEO_DIR" || true
@@ -36,8 +36,8 @@ PRETRAIN_PATH=${PRETRAIN_PATH:-/zhaohan/ZJH/openpi_pytorch/checkpoints/pi0_liber
 TRAINING_STEPS=${TRAINING_STEPS:-2}             # total steps; cut=1 will stop after 1 loop
 BATCH_SIZE=${BATCH_SIZE:-2}
 RLOO_BATCH=${RLOO_BATCH:-2}
-ROLLOUTS_PER_ENV=${ROLLOUTS_PER_ENV:-2}
-NUM_ENVS=${NUM_ENVS:-2}
+ROLLOUTS_PER_ENV=${ROLLOUTS_PER_ENV:-1}
+NUM_ENVS=${NUM_ENVS:-1}
 EARLY_STOP_PCT=${EARLY_STOP_PCT:-1}
 ENABLE_DYNAMIC_SAMPLING=${ENABLE_DYNAMIC_SAMPLING:-false}
 MAX_EP_LEN=${MAX_EP_LEN:-100}
@@ -82,7 +82,7 @@ RANK=0 WORLD_SIZE=1 MASTER_ADDR=localhost MASTER_PORT=$MASTER_PORT python train_
   algo.policy.condition_mode=$CONDITION_MODE \
   algo.eval_only=$EVAL_ONLY \
   rollout.enabled=$ROLLOUT_ENABLED \
-  +rollout.n_video=2 \
+  +rollout.n_video=1 \
   logging.mode=disabled
 
 EXIT_CODE=$?
