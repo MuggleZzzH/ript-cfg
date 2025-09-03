@@ -335,41 +335,29 @@ class Pi0LiberoRunner:
                     done_flags[i] = bool(di)
                     success_flags[i] = success_flags[i] or done_flags[i]
 
-                # 记录视频帧（仅并行环境0）。优先 env.render / env.env_method，再回退 obs。
+                # 记录视频帧（仅并行环境0）。安全策略：仅从观测obs抓帧，避免对子进程调用render造成阻塞。
                 if render and frames is not None:
+                    # 允许通过环境变量切换抓帧源，默认obs（更安全）。
+                    # PI0_RENDER_SOURCE in {"obs","render"}; 非"render"一律走obs路径。
+                    source = os.environ.get('PI0_RENDER_SOURCE', 'obs').lower()
                     frame = None
-                    # 1) env.render()
-                    try:
-                        fr = env.render()
-                        if isinstance(fr, (list, tuple)) and len(fr) > 0:
-                            fr = fr[0]
-                        if fr is not None:
-                            fr = np.asarray(fr)
-                            if fr.dtype != np.uint8:
-                                if getattr(fr, 'max', lambda: 1.1)() <= 1.0:
-                                    fr = (fr * 255.0).clip(0, 255).astype(np.uint8)
-                                else:
-                                    fr = fr.astype(np.uint8)
-                            frame = fr
-                    except Exception:
-                        pass
-                    # 1.1) SubprocVectorEnv: env_method('render')
-                    if frame is None and hasattr(env, 'env_method'):
+                    if source == 'render' and hasattr(env, 'render'):
+                        # 可选：显式要求使用render时才尝试（不建议在SubprocVectorEnv下使用）。
                         try:
-                            frs = env.env_method('render')
-                            if isinstance(frs, (list, tuple)) and len(frs) > 0:
-                                fr = frs[0]
-                                if fr is not None:
-                                    fr = np.asarray(fr)
-                                    if fr.dtype != np.uint8:
-                                        if getattr(fr, 'max', lambda: 1.1)() <= 1.0:
-                                            fr = (fr * 255.0).clip(0, 255).astype(np.uint8)
-                                        else:
-                                            fr = fr.astype(np.uint8)
-                                    frame = fr
+                            fr = env.render()
+                            if isinstance(fr, (list, tuple)) and len(fr) > 0:
+                                fr = fr[0]
+                            if fr is not None:
+                                fr = np.asarray(fr)
+                                if fr.dtype != np.uint8:
+                                    if getattr(fr, 'max', lambda: 1.1)() <= 1.0:
+                                        fr = (fr * 255.0).clip(0, 255).astype(np.uint8)
+                                    else:
+                                        fr = fr.astype(np.uint8)
+                                frame = fr
                         except Exception:
-                            pass
-                    # 2) Fallback: from obs
+                            frame = None
+                    # 默认或render失败：从obs抓帧
                     if frame is None:
                         if isinstance(obs, (list, tuple)) and len(obs) > 0:
                             frame = _extract_frame_from_obs(obs[0])
