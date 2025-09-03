@@ -364,17 +364,21 @@ class Pi0LiberoRunner:
                     out_gif = os.path.join(video_dir, base_name + '.gif')
                     if _verbose:
                         try:
-                            print(f"[Runner] mp4 failed; fallback to GIF: {out_gif}")
-                        except Exception:
-                            pass
-                    try:
-                        imageio.mimsave(out_gif, frames, duration=0.1)
-                    except Exception:
-                        if _verbose:
-                            try:
-                                print(f"[Runner] gif save failed; skipping video for this loop")
-                            except Exception:
-                                pass
+                            np.savez_compressed(out_npz, frames=np.asarray(frames))
+                            print(f"[Pi0LiberoRunner] Saved frames as npz: {out_npz} | mp4 error={getattr(e_mp4, 'args', e_mp4)}, gif error={getattr(e_gif, 'args', e_gif)}")
+                        except Exception as e_npz:
+                            print(f"[Pi0LiberoRunner] Warning: failed to save video/frames. mp4={getattr(e_mp4, 'args', e_mp4)}, gif={getattr(e_gif, 'args', e_gif)}, npz={getattr(e_npz, 'args', e_npz)}")
+            elif render and frames is not None and len(frames) == 0:
+                # 调试信息：render 开启但未采集到任何帧
+                try:
+                    last_keys = None
+                    if isinstance(obs, (list, tuple)) and len(obs) > 0 and isinstance(obs[0], dict):
+                        last_keys = list(obs[0].keys())
+                    elif isinstance(obs, dict):
+                        last_keys = list(obs.keys())
+                    print(f"[Pi0LiberoRunner] Warning: no frames captured this loop (env={env_name}). Last obs keys={last_keys}")
+                except Exception:
+                    pass
 
             # 逐 env 产出一次 rollouts（平均 reward / success）
             for k in range(env_num):
