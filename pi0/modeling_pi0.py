@@ -49,8 +49,17 @@ class PI0Policy(PreTrainedPolicy):
             # 回退：若联网失败，强制本地
             self.language_tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, local_files_only=True)
         self.model = PI0FlowMatching(config)
-        # 允许从上层选择条件注入模式："bias" 或 "token"
-        self.model.condition_mode = condition_mode
+        # 开关：是否启用双分支（CFG + token 模式）。默认关闭以保持原版行为。
+        # 可通过环境变量覆盖：PI0_ENABLE_DUAL ∈ {0,1,true,false}
+        enable_dual_env = str(os.environ.get("PI0_ENABLE_DUAL", "0")).lower()
+        self._enable_dual_branch = enable_dual_env in ("1", "true", "yes")
+
+        # 若启用双分支，优先使用 token 注入模式；否则沿用传入的 condition_mode（默认 bias）
+        if self._enable_dual_branch:
+            self.model.condition_mode = "token"
+        else:
+            # 允许从上层选择条件注入模式："bias" 或 "token"
+            self.model.condition_mode = condition_mode
         self.reset()
 
     def reset(self):
@@ -86,7 +95,17 @@ class PI0Policy(PreTrainedPolicy):
         images, img_masks = self.prepare_images(observation)
         state = self.prepare_state(observation)
         lang_tokens, lang_masks = self.prepare_language(observation)
-        # 透传 cfg_scale / is_positive_infer 到流匹配采样，支持推理期CFG
+        # 根据开关决定是否使用双分支CFG
+        if self._enable_dual_branch:
+            # 允许外部传入 cfg_scale / is_positive_infer；若未提供，使用默认 1.0/None
+            cfg_scale_to_use = cfg_scale if cfg_scale is not None else 1.0
+            is_pos_to_use = is_positive_infer
+        else:
+            # 关闭双分支：强制单分支、无条件
+            cfg_scale_to_use = 1.0
+            is_pos_to_use = None
+
+        # 调用采样（当 cfg_scale_to_use==1.0 时内部走单分支路径）
         actions = self.model.sample_actions(
             images,
             img_masks,
@@ -94,8 +113,8 @@ class PI0Policy(PreTrainedPolicy):
             lang_masks,
             state,
             noise=noise,
-            cfg_scale=cfg_scale if cfg_scale is not None else 1.0,
-            is_positive_infer=is_positive_infer,
+            cfg_scale=cfg_scale_to_use,
+            is_positive_infer=is_pos_to_use,
         )
         return actions
 
