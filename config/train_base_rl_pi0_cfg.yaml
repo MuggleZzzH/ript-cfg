@@ -1,0 +1,81 @@
+defaults:
+  - task: libero_spatial
+  - algo: pi0_cfg_rl
+  - reward_function: success
+  - paths
+  - _self_
+
+# set the path to your data and experiments directories
+output_prefix: ${paths.output_prefix}
+data_prefix: ${paths.data_prefix}
+
+exp_name: pi0_cfg_debug # 
+variant_name: null
+seed: 10000
+device: cuda
+stage: null
+make_unique_experiment_dir: true
+logging_folder: pi0_cfg
+
+checkpoint_path: null
+
+train_dataloader:
+  _target_: torch.utils.data.DataLoader
+  batch_size: 4  # PI0专用：较小批大小
+  shuffle: true
+  num_workers: 4  # PI0专用：较少worker
+  persistent_workers: false
+  pin_memory: true
+  multiprocessing_context: fork
+  drop_last: true
+
+training:
+  gradient_accumulation_steps: 1
+  n_epochs: 50  # PI0专用：较少epoch
+  save_interval: 5  # PI0专用：更频繁保存
+  log_interval: 50  # PI0专用：更频繁日志
+  use_amp: false
+  use_tqdm: true
+  do_profile: false
+  save_all_checkpoints: false
+  auto_continue: false
+  load_obs: true
+  cut: 0
+  n_steps: 100  # PI0专用：适合PI0的训练步数
+  rollout_steps: 5  # PI0专用：较少rollout步数
+  grad_clip: 1.0
+
+  # resume a training run
+  resume: false
+  resume_path: ""
+
+dataset:
+  seq_len: 50       # PI0专用：匹配窗口chunk长度
+  frame_stack: 1    # PI0专用：单帧即可
+  obs_seq_len: 1    # PI0专用：只需单时刻观测
+  lowdim_obs_seq_len: null
+  load_obs_for_pretrain: false  # PI0专用：不需要预训练观测
+  load_next_obs: false  # PI0专用：不需要future观测
+  get_pad_mask: true
+  pad_seq_length: false  # PI0专用：不需要序列填充
+  load_state: true  # PI0专用：需要初始状态用于rollout
+
+rollout:
+  enabled: true
+  interval: 10  # PI0专用：更频繁rollout
+  rollouts_per_env: 16  # PI0专用：较少rollout
+  num_parallel_envs: 1  # PI0专用：单环境
+  max_episode_length: 300  # PI0专用：匹配PI0算法配置
+
+task:
+  task_names_to_use: 
+    - pick_up_the_black_bowl_next_to_the_plate_and_place_it_on_the_plate
+  env_runner:
+    num_parallel_envs: 1  # PI0专用：单环境
+
+logging:
+  group: null
+  mode: online
+  project: ${common.wandb_project}
+  resume: true
+  save_code: true

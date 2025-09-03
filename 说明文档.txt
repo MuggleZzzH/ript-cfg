@@ -1,0 +1,39 @@
+PI0 + CFG-Flow 本地/离线运行说明（简版）
+
+一、快速运行与评估长度控制
+- 入口脚本：scripts/openpi/try/fast_smoke.sh（仅通过 Hydra 覆盖，不改配置文件）
+- 关键参数（可通过环境变量或直接改脚本变量传入）：
+  - algo.max_episode_length：评估时每个 episode 的最大步数。
+  - algo.env_runner.num_steps_wait：开始推理前的空等待步数（用于相机稳定等）。
+- 本仓库已修正：训练脚本不再覆盖 eval runner 的 max_episode_length；因此 CLI/Hydra 传入的值会生效。
+- 用法示例：
+  MAX_EP_LEN=20 WAIT_STEPS=0 EVAL_ONLY=true bash scripts/openpi/try/fast_smoke.sh
+
+二、常用环境变量
+- PI0_VERBOSE=1：打印推理耗时、动作维度等。
+- PI0_DISABLE_INIT_STATES=1：跳过 init_states，便于快速 smoke。
+- PI0_N_VIDEO：评估保存视频数量（0 表示不存）。
+- PI0_VIDEO_DIR：视频输出目录。
+- PI0_RENDER_SOURCE=obs|render：视频帧抓取来源，默认 obs（更安全）。
+
+三、模型与数据本地化
+- algo.policy.pretrained_path 指向本地权重目录。
+- ript/algos/policies/pi0_oft_policy.py 内部从本地加载 tokenizer/model（local_files_only）。
+- norm_stats_path 指向本地 norm_stats.json。
+
+四、调试要点
+- 张量维度：图像按 (B,H,W,C) -> (B,C,H,W) 处理；状态向量保证 batch 维存在。
+- 分布式：单卡运行时 fast_smoke.sh 已设置 RANK/WORLD_SIZE/MASTER_*。
+- 端口：脚本内使用动态可用端口，避免冲突。
+
+五、常见异常与处理
+- RANK 未设置：使用脚本运行；或手动导出 RANK/WORLD_SIZE/MASTER_*。
+- CLIP/Tokenizer 需离线：确保本地路径完整且设置 local_files_only。
+- torch.load 安全限制：已在 LIBERO 若干处改为 weights_only=False。
+
+六、目录与关键文件
+- 见同目录 目录结构.txt。
+
+更新记录（重要变更）
+- 评估长度控制：去掉 train_ript_pi0.py 中对 eval runner 的 max_episode_length=None 强制覆盖，评估长度可由 CLI/hydra 控制。
+- Runner 改进：pi0_libero_runner.py 支持 WAIT_STEPS、视频抓帧源切换、首帧观测路径更安全等。

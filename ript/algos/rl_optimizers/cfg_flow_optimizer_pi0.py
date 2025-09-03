@@ -24,6 +24,9 @@ class CFGFlowOptimizerPI0:
         stride: int = 1,
         max_windows_per_episode: int | None = None,
         optimizer_batch_size: int = 4,
+        grad_norm_clip_model: float = 1.0,
+        grad_norm_clip_header: float = 1.0,
+        use_binary_advantage: bool = True,  # 开关：True=二值化(类似IQL)，False=连续advantage
         **kwargs: Any,
     ) -> None:
         self.rollout_generator = rollout_generator
@@ -33,6 +36,9 @@ class CFGFlowOptimizerPI0:
         self.stride = max(1, stride)
         self.max_windows_per_episode = max_windows_per_episode
         self.optimizer_batch_size = max(1, optimizer_batch_size)
+        self.grad_norm_clip_model = grad_norm_clip_model
+        self.grad_norm_clip_header = grad_norm_clip_header
+        self.use_binary_advantage = use_binary_advantage
 
     # ====== Public API ======
     def optimize(self, model, batch, optimizers, data_iterator=None, dataloader=None) -> Dict[str, float]:
@@ -103,7 +109,13 @@ class CFGFlowOptimizerPI0:
             noise = torch.randn(B, T, D_max, device=device, dtype=batch_data["state"].dtype)
             time = torch.rand(B, device=device, dtype=batch_data["state"].dtype) * 0.999 + 0.001
 
-            w_pos = (sub_adv > 0).float().to(device)
+            # Advantage权重计算：支持二值化和连续两种模式
+            if self.use_binary_advantage:
+                # 二值化模式：类似IQL Diffusion，只区分正负
+                w_pos = (sub_adv > 0).float().to(device)
+            else:
+                # 连续模式：保留advantage的magnitude信息
+                w_pos = torch.clamp(sub_adv, min=0.0).to(device)  # 只保留正值，保持连续
 
             batch_pos = dict(batch_data)
             batch_pos["noise"] = noise
@@ -143,7 +155,22 @@ class CFGFlowOptimizerPI0:
                     params = []
                     for group in opt.param_groups:
                         params.extend(group["params"])
-                    torch.nn.utils.clip_grad_norm_(params, 1.0)
+                    
+                    # 确定梯度裁剪值：区分model和header优化器
+                    if hasattr(model, 'trainable_params'):
+                        # 检查优化器参数是否属于header组
+                        is_header_opt = False
+                        if 'header' in model.trainable_params:
+                            header_params = set(model.trainable_params['header'])
+                            if any(param in header_params for param in params):
+                                is_header_opt = True
+                        
+                        grad_clip_value = self.grad_norm_clip_header if is_header_opt else self.grad_norm_clip_model
+                    else:
+                        # 默认使用model梯度裁剪值
+                        grad_clip_value = self.grad_norm_clip_model
+                    
+                    torch.nn.utils.clip_grad_norm_(params, grad_clip_value)
                     opt.step()
                     opt.zero_grad()
                 accum_count = 0

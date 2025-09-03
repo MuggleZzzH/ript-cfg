@@ -38,8 +38,8 @@ PRETRAIN_PATH=${PRETRAIN_PATH:-/zhaohan/ZJH/openpi_pytorch/checkpoints/pi0_liber
 TRAINING_STEPS=${TRAINING_STEPS:-2}             # total steps; cut=1 will stop after 1 loop
 BATCH_SIZE=${BATCH_SIZE:-2}
 RLOO_BATCH=${RLOO_BATCH:-2}
-ROLLOUTS_PER_ENV=${ROLLOUTS_PER_ENV:-1}
-NUM_ENVS=${NUM_ENVS:-1}
+ROLLOUTS_PER_ENV=${ROLLOUTS_PER_ENV:-2}
+NUM_ENVS=${NUM_ENVS:-2}
 EARLY_STOP_PCT=${EARLY_STOP_PCT:-1}
 ENABLE_DYNAMIC_SAMPLING=${ENABLE_DYNAMIC_SAMPLING:-false}
 MAX_EP_LEN=${MAX_EP_LEN:-100}
@@ -47,6 +47,7 @@ WAIT_STEPS=${WAIT_STEPS:-10}
 STRIDE=${STRIDE:-10}
 MAX_WINDOWS=${MAX_WINDOWS:-5}
 OPTIMIZER_BATCH=${OPTIMIZER_BATCH:-4}
+USE_BINARY_ADV=${USE_BINARY_ADV:-true}  # true=二值化，false=连续advantage
 CONDITION_MODE=${CONDITION_MODE:-bias}
 ROLLOUT_ENABLED=${ROLLOUT_ENABLED:-true}
 EVAL_ONLY=${EVAL_ONLY:-true}
@@ -64,8 +65,7 @@ PY
 )
 
 RANK=0 WORLD_SIZE=1 MASTER_ADDR=localhost MASTER_PORT=$MASTER_PORT python train_ript_pi0.py \
-  --config-name=train_base_rl_openvla_oft \
-  algo=pi0_cfg_rl \
+  --config-name=train_base_rl_pi0_cfg \
   algo.norm_stats_path=$NORM_STATS \
   algo.policy.pretrained_path=$PRETRAIN_PATH \
   training.n_steps=$TRAINING_STEPS \
@@ -81,6 +81,7 @@ RANK=0 WORLD_SIZE=1 MASTER_ADDR=localhost MASTER_PORT=$MASTER_PORT python train_
   algo.stride=$STRIDE \
   algo.max_windows_per_episode=$MAX_WINDOWS \
   algo.rl_optimizer_factory.optimizer_batch_size=$OPTIMIZER_BATCH \
+  algo.rl_optimizer_factory.use_binary_advantage=$USE_BINARY_ADV \
   algo.policy.condition_mode=$CONDITION_MODE \
   algo.eval_only=$EVAL_ONLY \
   rollout.enabled=$ROLLOUT_ENABLED \

@@ -6,10 +6,10 @@ policy:
   device_id: 0
   norm_stats_path: ${algo.norm_stats_path}
   pretrained_path: /zhaohan/ZJH/openpi_pytorch/checkpoints/pi0_libero_pytorch
-  condition_mode: bias  # 可选: bias|concat|token
+  condition_mode: token  # 可选: bias|concat|token
   # PI0 模型训练范围（迁移自代码参数）
   freeze_vision_encoder: true     # 冻结视觉塔
-  train_expert_only: false        # 仅训练 Expert 后缀（前缀冻结）
+  train_expert_only: true        # 仅训练 Expert 后缀（前缀冻结）
 
 optimizer_factory:
   _target_: torch.optim.AdamW
@@ -32,6 +32,8 @@ env_runner:
   num_parallel_envs: ${algo.num_parallel_envs}
   max_episode_length: ${algo.max_episode_length}
   task_names_to_use: ${task.task_names_to_use}
+  use_laplace_sampling: ${algo.use_laplace_sampling}
+  scale_factor: ${algo.scale_factor}
   num_steps_wait: 10  # 额外等待步数，可被命令行覆盖
 
 rollout_generator_factory:
@@ -53,6 +55,9 @@ rl_optimizer_factory:
   stride: ${algo.stride}
   max_windows_per_episode: ${algo.max_windows_per_episode}
   optimizer_batch_size: 4
+  grad_norm_clip_model: ${algo.grad_norm_clip_model}
+  grad_norm_clip_header: ${algo.grad_norm_clip_header}
+  use_binary_advantage: ${algo.use_binary_advantage}
 
 name: pi0_cfg
 
@@ -70,6 +75,12 @@ mix_val_init_in_rloo: false
 gradient_accumulation_steps: 1
 optimizer_batch_size: 4
 eval_only: false
+# 采样参数（对齐OpenVLA）
+use_laplace_sampling: true
+scale_factor: 1.0
+# 梯度裁剪（对齐OpenVLA）
+grad_norm_clip_model: 1.0
+grad_norm_clip_header: 1.0
 norm_stats_path: /zhaohan/ZJH/openpi_pytorch/lerobot_dataset/norm_stats.json
 rollout_training_task_names: null
 frame_stack: 1
@@ -85,6 +96,8 @@ rollout_stats_path: null
 alpha_uncond: 0.1
 stride: 1
 max_windows_per_episode: null
+# Advantage模式开关：True=二值化(类似IQL)，False=连续advantage
+use_binary_advantage: true
 
 # 推理默认（可被环境变量覆盖：PI0_CFG_SCALE / PI0_IS_POSITIVE）
 inference:
@@ -92,13 +105,13 @@ inference:
   is_positive_infer: null
 
 dataset:
-  seq_len: 600
-  frame_stack: 1
-  obs_seq_len: 1
+  seq_len: 50       # PI0专用：匹配窗口chunk长度(H=50)
+  frame_stack: 1    # PI0专用：单帧即可
+  obs_seq_len: 1    # PI0专用：只需单时刻观测
   lowdim_obs_seq_len: null
-  load_obs_for_pretrain: false
+  load_obs_for_pretrain: false  # PI0专用：不需要预训练观测
   get_pad_mask: true
-  pad_seq_length: false
-  load_state: true
-  load_next_obs: false
+  pad_seq_length: false  # PI0专用：不需要序列填充
+  load_state: true  # PI0专用：需要初始状态用于rollout
+  load_next_obs: false  # PI0专用：不需要future观测
 
