@@ -335,9 +335,61 @@ class Pi0LiberoRunner:
                     done_flags[i] = bool(di)
                     success_flags[i] = success_flags[i] or done_flags[i]
 
-                # 记录视频帧（仅并行环境0）
-                if render and isinstance(obs, (list, tuple)) and len(obs) > 0 and frames is not None:
-                    frame = _extract_frame_from_obs(obs[0])
+                # 记录视频帧（仅并行环境0）。优先 env.render / env.env_method，再回退 obs。
+                if render and frames is not None:
+                    frame = None
+                    # 1) env.render()
+                    try:
+                        fr = env.render()
+                        if isinstance(fr, (list, tuple)) and len(fr) > 0:
+                            fr = fr[0]
+                        if fr is not None:
+                            fr = np.asarray(fr)
+                            if fr.dtype != np.uint8:
+                                if getattr(fr, 'max', lambda: 1.1)() <= 1.0:
+                                    fr = (fr * 255.0).clip(0, 255).astype(np.uint8)
+                                else:
+                                    fr = fr.astype(np.uint8)
+                            frame = fr
+                    except Exception:
+                        pass
+                    # 1.1) SubprocVectorEnv: env_method('render')
+                    if frame is None and hasattr(env, 'env_method'):
+                        try:
+                            frs = env.env_method('render')
+                            if isinstance(frs, (list, tuple)) and len(frs) > 0:
+                                fr = frs[0]
+                                if fr is not None:
+                                    fr = np.asarray(fr)
+                                    if fr.dtype != np.uint8:
+                                        if getattr(fr, 'max', lambda: 1.1)() <= 1.0:
+                                            fr = (fr * 255.0).clip(0, 255).astype(np.uint8)
+                                        else:
+                                            fr = fr.astype(np.uint8)
+                                    frame = fr
+                        except Exception:
+                            pass
+                    # 2) Fallback: from obs
+                    if frame is None:
+                        if isinstance(obs, (list, tuple)) and len(obs) > 0:
+                            frame = _extract_frame_from_obs(obs[0])
+                        elif isinstance(obs, dict):
+                            try:
+                                base = obs.get('agentview_image', obs.get('agentview_rgb'))
+                                wrist = obs.get('robot0_eye_in_hand_image', obs.get('robot0_eye_in_hand', obs.get('eye_in_hand_rgb')))
+                                tmp = {}
+                                if isinstance(base, np.ndarray) and base.ndim == 4:
+                                    tmp['agentview_image'] = base[0]
+                                elif base is not None:
+                                    tmp['agentview_image'] = base
+                                if isinstance(wrist, np.ndarray) and wrist.ndim == 4:
+                                    tmp['robot0_eye_in_hand_image'] = wrist[0]
+                                elif wrist is not None:
+                                    tmp['robot0_eye_in_hand_image'] = wrist
+                                if tmp:
+                                    frame = _extract_frame_from_obs(tmp)
+                            except Exception:
+                                frame = None
                     if frame is not None:
                         frames.append(frame)
 
@@ -350,6 +402,7 @@ class Pi0LiberoRunner:
                 ts = datetime.now().strftime('%Y%m%d_%H%M%S')
                 base_name = f'{env_name}_loop{loop_idx}_{ts}'
                 out_mp4 = os.path.join(video_dir, base_name + '.mp4')
+                out_gif = os.path.join(video_dir, base_name + '.gif')
                 _verbose = os.environ.get('PI0_VERBOSE', '0') == '1'
                 if _verbose:
                     try:
@@ -357,12 +410,14 @@ class Pi0LiberoRunner:
                     except Exception:
                         pass
                 try:
-                    # 优先保存 mp4（需要 imageio-ffmpeg）
                     imageio.mimsave(out_mp4, frames, fps=10)
-                except Exception:
-                    # 若 mp4 失败（常见于缺少 ffmpeg），回退为 gif（无需外部二进制）
-                    out_gif = os.path.join(video_dir, base_name + '.gif')
-                    if _verbose:
+                    print(f"[Pi0LiberoRunner] Saved video: {out_mp4}")
+                except Exception as e_mp4:
+                    try:
+                        imageio.mimsave(out_gif, frames, fps=10)
+                        print(f"[Pi0LiberoRunner] Saved video (gif fallback): {out_gif} | mp4 error={getattr(e_mp4, 'args', e_mp4)}")
+                    except Exception as e_gif:
+                        out_npz = os.path.join(video_dir, base_name + '.npz')
                         try:
                             np.savez_compressed(out_npz, frames=np.asarray(frames))
                             print(f"[Pi0LiberoRunner] Saved frames as npz: {out_npz} | mp4 error={getattr(e_mp4, 'args', e_mp4)}, gif error={getattr(e_gif, 'args', e_gif)}")
