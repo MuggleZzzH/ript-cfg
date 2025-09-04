@@ -125,14 +125,31 @@ def main(cfg):
         print('Saving to:', experiment_dir)
         print('Experiment name:', experiment_name)
 
-        import wandb
-        wandb.init(
-            dir=experiment_dir,
-            name=experiment_name,
-            config=OmegaConf.to_container(cfg, resolve=True),
-            **cfg.logging
-        )
-        logger = Logger(train_cfg.log_interval)
+        # 选择日志后端：wandb | swanlab | none
+        import os as _os
+        backend = str(_os.environ.get('LOG_BACKEND', 'wandb')).lower()
+        logger = Logger(train_cfg.log_interval, backend=backend)
+
+        try:
+            if backend == 'swanlab':
+                import swanlab as _lb
+                _mode = str(_os.environ.get('SWANLAB_MODE', '')).lower()
+                _exp = _lb.init(
+                    project=str(getattr(cfg, 'logging_folder', 'ript')),
+                    experiment_name=str(experiment_name),
+                    config=OmegaConf.to_container(cfg, resolve=True),
+                    mode=('offline' if _mode == 'offline' else 'online'),
+                )
+            elif backend == 'wandb':
+                import wandb as _lb
+                _lb.init(
+                    dir=experiment_dir,
+                    name=experiment_name,
+                    config=OmegaConf.to_container(cfg, resolve=True),
+                    **cfg.logging
+                )
+        except Exception as _e:
+            print(f"[RANK {rank}] Warning: logger backend init failed: {getattr(_e, 'args', _e)}")
     else:
         logger = None
 
@@ -241,8 +258,11 @@ def main(cfg):
         for key, value in metrics.items():
             info[key] = value
 
-        if rank == 0:
-            logger.log(info, global_step)
+        if rank == 0 and logger is not None:
+            try:
+                logger.log(info, global_step)
+            except Exception:
+                pass
 
         if train_cfg.cut and global_step >= train_cfg.cut:
             break
@@ -308,9 +328,15 @@ def main(cfg):
 
     if rank == 0:
         print("[info] Finished training")
+        import os as _os
+        backend = str(_os.environ.get('LOG_BACKEND', 'wandb')).lower()
         try:
-            import wandb
-            wandb.finish()
+            if backend == 'swanlab':
+                import swanlab as _lb
+                _lb.finish()
+            elif backend == 'wandb':
+                import wandb as _lb
+                _lb.finish()
         except Exception:
             pass
 
