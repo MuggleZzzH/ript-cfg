@@ -307,7 +307,7 @@ class Pi0LiberoRunner:
                     # 评测时可传 cfg_scale/is_positive_infer（如通过环境变量或 policy 属性控制）
                     cfg_scale = float(os.environ.get('PI0_CFG_SCALE', '1.0'))
                     is_pos_env = os.environ.get('PI0_IS_POSITIVE', None)
-                    is_pos_flag = int(is_pos_env) if is_pos_env is not None else None
+                    is_pos_flag = int(is_pos_env) if is_pos_env is not None and is_pos_env != '' else None
                     norm_actions = policy.select_action(batch_obs, cfg_scale=cfg_scale, is_positive_infer=is_pos_flag)
                     if _verbose:
                         try:

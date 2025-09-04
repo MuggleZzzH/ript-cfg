@@ -19,7 +19,7 @@ source /opt/conda/etc/profile.d/conda.sh && conda activate mix
 
 # --- CFG推理控制(环境变量) ---
 export PI0_ENABLE_DUAL=${PI0_ENABLE_DUAL:-1}    # 1=启用CFG双分支
-export PI0_CFG_SCALE=${PI0_CFG_SCALE:-2.0}      # CFG引导权重(快速测试用较小值)
+export PI0_CFG_SCALE=${PI0_CFG_SCALE:-1.0}      # CFG引导权重(快速测试用较小值)
 export PI0_IS_POSITIVE=${PI0_IS_POSITIVE:-}     # 空=正常CFG
 export PI0_N_VIDEO=${PI0_N_VIDEO:-1}            # 录像数量
 export PI0_VERBOSE=1
@@ -50,7 +50,7 @@ STRIDE=${STRIDE:-10}
 MAX_WINDOWS=${MAX_WINDOWS:-5}
 OPTIMIZER_BATCH=${OPTIMIZER_BATCH:-4}
 CF_DROPOUT_P=${CF_DROPOUT_P:-0.1}       # CF无分类器丢弃概率
-CONDITION_MODE=${CONDITION_MODE:-bias}
+CONDITION_MODE=${CONDITION_MODE:-token}
 ROLLOUT_ENABLED=${ROLLOUT_ENABLED:-true}
 EVAL_ONLY=${EVAL_ONLY:-true}
 
