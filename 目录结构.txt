@@ -35,3 +35,6 @@
 - 评估视频：PI0_N_VIDEO、PI0_VIDEO_DIR、PI0_RENDER_SOURCE。
 - 本地模型：algo.policy.pretrained_path；norm_stats_path。
 
+新增文档
+- `ript-vla_ori/CFGRL_Alignment_Plan.md`：CFGRL 全面对齐改造方案入口（对齐 cfgrl.py 的训练/推理）。
+

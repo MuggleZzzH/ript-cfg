@@ -20,7 +20,8 @@ class CFGFlowOptimizerPI0:
         rollout_generator,
         reward_function,
         gradient_accumulation_steps: int = 1,
-        alpha_uncond: float = 0.1,
+        alpha_uncond: float = 0.0,
+        cf_dropout_p: float = 0.1,
         stride: int = 1,
         max_windows_per_episode: int | None = None,
         optimizer_batch_size: int = 4,
@@ -33,6 +34,7 @@ class CFGFlowOptimizerPI0:
         self.reward_function = reward_function
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.alpha_uncond = alpha_uncond
+        self.cf_dropout_p = max(0.0, min(1.0, cf_dropout_p))
         self.stride = max(1, stride)
         self.max_windows_per_episode = max_windows_per_episode
         self.optimizer_batch_size = max(1, optimizer_batch_size)
@@ -109,14 +111,6 @@ class CFGFlowOptimizerPI0:
             noise = torch.randn(B, T, D_max, device=device, dtype=batch_data["state"].dtype)
             time = torch.rand(B, device=device, dtype=batch_data["state"].dtype) * 0.999 + 0.001
 
-            # Advantage权重计算：支持二值化和连续两种模式
-            if self.use_binary_advantage:
-                # 二值化模式：类似IQL Diffusion，只区分正负
-                w_pos = (sub_adv > 0).float().to(device)
-            else:
-                # 连续模式：保留advantage的magnitude信息
-                w_pos = torch.clamp(sub_adv, min=0.0).to(device)  # 只保留正值，保持连续
-
             batch_pos = dict(batch_data)
             batch_pos["noise"] = noise
             batch_pos["time"] = time
@@ -127,16 +121,31 @@ class CFGFlowOptimizerPI0:
             batch_uncond = dict(batch_data)
             batch_uncond["noise"] = noise
             batch_uncond["time"] = time
-            batch_uncond["is_positive"] = torch.zeros(B, device=device, dtype=torch.long)
+            # 使用“∅无条件”分支：不注入条件（对齐CFGRL的unc分支语义）
+            batch_uncond["is_positive"] = None
             _, loss_dict_uncond = self._forward_losses(model, batch_uncond)
             per_step_uncond = loss_dict_uncond["losses"].mean(dim=-1)
 
             mask = (~batch_data["action_is_pad"]).float()
-            w_pos_exp = w_pos.view(B, 1).expand_as(mask)
-            combined = w_pos_exp * per_step_pos + self.alpha_uncond * per_step_uncond
+
+            # 1) 二值优势标签（窗口级）
+            is_good = (sub_adv >= 0).to(device=device, dtype=torch.float32)  # (B,)
+            # 2) CF Dropout 采样
+            do_cfg = torch.bernoulli(torch.full((B,), self.cf_dropout_p, device=device, dtype=torch.float32))  # (B,)
+            # 3) 门控：cond 分支在"好样本且未dropout"时被选择
+            m_cond = (is_good * (1.0 - do_cfg)).view(B, 1).expand_as(mask)    # (B, T)
+            m_unc  = (1.0 - m_cond)                                           # (B, T)
+
+            combined = m_cond * per_step_pos + m_unc * per_step_uncond
             valid_steps = mask.sum(dim=1).clamp_min(1.0)
             window_losses = (combined * mask).sum(dim=1) / valid_steps
             sub_loss = window_losses.mean()
+            
+            # 保存变量供监控使用
+            if not hasattr(self, '_last_do_cfg'):
+                self._last_do_cfg = do_cfg
+                self._last_m_cond = m_cond
+                self._last_m_unc = m_unc
 
             sub_loss_norm = sub_loss / max(1, self.gradient_accumulation_steps)
             with torch.amp.autocast('cuda', enabled=torch.cuda.is_available(), dtype=torch.bfloat16):
@@ -183,6 +192,10 @@ class CFGFlowOptimizerPI0:
             "mean_advantage": float(adv.mean().item()),
             "non_zero_adv_ratio": float((adv != 0).float().mean().item()),
             "rollout_checked": float(samples_checked),
+            "training/cf_dropout_rate": float(torch.mean(self._last_do_cfg).item()) if hasattr(self, '_last_do_cfg') else 0.0,
+            "training/pos_rate": float(torch.mean((adv >= 0).float()).item()),
+            "training/branch_usage/cond": float(torch.mean(self._last_m_cond.float()).item()) if hasattr(self, '_last_m_cond') else 0.0,
+            "training/branch_usage/uncond": float(torch.mean(self._last_m_unc.float()).item()) if hasattr(self, '_last_m_unc') else 0.0,
         }
         # DDP metrics reduce
         if dist.is_initialized():
@@ -318,6 +331,5 @@ class CFGFlowOptimizerPI0:
             # Should not happen in PI0Policy
             loss, loss_dict = out, {}
         return loss, loss_dict
-
 
 

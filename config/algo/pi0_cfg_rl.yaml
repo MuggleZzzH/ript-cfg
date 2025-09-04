@@ -52,6 +52,7 @@ rl_optimizer_factory:
   _partial_: true
   gradient_accumulation_steps: ${algo.gradient_accumulation_steps}
   alpha_uncond: ${algo.alpha_uncond}
+  cf_dropout_p: ${algo.cf_dropout_p}
   stride: ${algo.stride}
   max_windows_per_episode: ${algo.max_windows_per_episode}
   optimizer_batch_size: 4
@@ -93,7 +94,8 @@ weight_decay: 0.0001
 rollout_stats_path: null
 
 # CFG Flow optimizer specific parameters
-alpha_uncond: 0.1
+cf_dropout_p: 0.1
+alpha_uncond: 0.0
 stride: 1
 max_windows_per_episode: null
 # Advantage模式开关：True=二值化(类似IQL)，False=连续advantage
@@ -101,7 +103,7 @@ use_binary_advantage: true
 
 # 推理默认（可被环境变量覆盖：PI0_CFG_SCALE / PI0_IS_POSITIVE）
 inference:
-  cfg_scale: 1.0
+  cfg_scale: 3.0
   is_positive_infer: null
 
 dataset:

@@ -180,3 +180,11 @@ PI0 + CFG-Flow 本地/离线运行说明（简版）
   4) 稳定性：对连续优势做标准化/温度缩放/分段截断，逐步网格搜索 `α_uncond∈[0.05,0.2]`、`cfg_scale∈[1.5,3.0]`；
   5) CFG 仍仅影响推理；训练不读取 `cfg_scale`。
 
+二十五、CFGRL 全面对齐改造方案入口
+- 文档路径：`ript-vla_ori/CFGRL_Alignment_Plan.md`
+- 目的：在 PI0 + Flow Matching 框架下对齐 `cfgrl/ogbench/agents/cfgrl.py` 的核心逻辑。
+- 要点：
+  - 训练：正/无条件两分支 FM；可选小概率条件 dropout；训练不读取 cfg；`alpha_uncond` 控制无条件权重。
+  - 推理：统一双分支合成 `v = v_uncond + cfg * (v_pos - v_uncond)`；`cfg==1.0` 退化为 `v_pos`；仅推理生效。
+  - 语义一致：bias 模式下推理“无条件”显式 `is_positive=0`，避免分布偏移。
+
