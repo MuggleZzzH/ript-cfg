@@ -453,7 +453,7 @@ class PI0FlowMatching(nn.Module):
             # 规则：
             # 0: cond token；1: state token；2..: action tokens
             # prefix 不可看 suffix 逻辑由外层拼接实现；suffix 内：state 不看 action，action 双向
-            att_masks[:, :2] = True  # 让 cond/state 形成一个小前缀块
+            att_masks[:, :3] = True  # 让 cond/state 形成一个小前缀块
         elif mode == 'concat':
             # 通道级拼接：在 [action_emb, time_emb, cond_emb(32)] 上拼接后，经线性压回到 2D
             cond32 = self.cond_embed_concat((is_positive.long() if isinstance(is_positive, torch.Tensor) else torch.zeros((bsize,), dtype=torch.long, device=device)))
@@ -605,7 +605,7 @@ class PI0FlowMatching(nn.Module):
                     past_key_values,
                     x_t,
                     expanded_time,
-                    is_positive=None,  # 表示"无条件"，token模式下不插入条件token；bias模式下不注入条件向量
+                    is_positive=torch.zeros(bsize, device=device, dtype=torch.long),
                 )
                 v_pos = self.predict_velocity(
                     state,

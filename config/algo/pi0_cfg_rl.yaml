@@ -51,14 +51,13 @@ rl_optimizer_factory:
   _target_: ript.algos.rl_optimizers.cfg_flow_optimizer_pi0.CFGFlowOptimizerPI0
   _partial_: true
   gradient_accumulation_steps: ${algo.gradient_accumulation_steps}
-  alpha_uncond: ${algo.alpha_uncond}
   cf_dropout_p: ${algo.cf_dropout_p}
   stride: ${algo.stride}
   max_windows_per_episode: ${algo.max_windows_per_episode}
-  optimizer_batch_size: 4
+  optimizer_batch_size: ${algo.optimizer_batch_size}
   grad_norm_clip_model: ${algo.grad_norm_clip_model}
   grad_norm_clip_header: ${algo.grad_norm_clip_header}
-  use_binary_advantage: ${algo.use_binary_advantage}
+  # 移除未使用的参数：alpha_uncond, use_binary_advantage
 
 name: pi0_cfg
 
@@ -94,17 +93,15 @@ weight_decay: 0.0001
 rollout_stats_path: null
 
 # CFG Flow optimizer specific parameters
-cf_dropout_p: 0.1
-alpha_uncond: 0.0
-stride: 1
-max_windows_per_episode: null
-# Advantage模式开关：True=二值化(类似IQL)，False=连续advantage
-use_binary_advantage: true
+cf_dropout_p: 0.1                    # CF无分类器丢弃概率：训练时强制无条件分支的比例
+stride: 1                            # 窗口滑动步长
+max_windows_per_episode: null        # 每episode最大窗口数，null=自适应
 
-# 推理默认（可被环境变量覆盖：PI0_CFG_SCALE / PI0_IS_POSITIVE）
+# 推理参数（文档默认值，实际以环境变量优先）
+# 使用方法：export PI0_CFG_SCALE=3.0 PI0_IS_POSITIVE=1 PI0_ENABLE_DUAL=1
 inference:
-  cfg_scale: 3.0
-  is_positive_infer: null
+  cfg_scale: 3.0                     # CFG引导权重w（对应论文guidance weight）
+  is_positive_infer: null            # 强制分支：null=正常CFG, 1=正分支, 0=负分支
 
 dataset:
   seq_len: 50       # PI0专用：匹配窗口chunk长度(H=50)

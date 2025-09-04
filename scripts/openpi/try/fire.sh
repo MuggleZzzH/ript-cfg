@@ -62,19 +62,22 @@ LOG_FILE="${LOG_DIR}/train_run_${TIMESTAMP}.log"
     GRADIENT_ACCUM_STEPS=4               # 梯度累积步数
     LEARNING_RATE=2.5e-5                 # 学习率
     
-    # === CFG-Flow 相关参数 ===
-    CONDITION_MODE="token"               # CFG注入模式: bias|token|concat
-    ALPHA_UNCOND=0.1                     # 无条件分支权重
-    STRIDE=1                             # 滑窗步长
-    MAX_WINDOWS=50                       # 每个episode最大窗口数
-    OPTIMIZER_BATCH_SIZE=4               # 优化器微批大小
+    # === CFG-Flow 训练参数 ===
+    CONDITION_MODE=${CONDITION_MODE:-"token"}        # CFG注入模式: bias|token|concat
+    CF_DROPOUT_P=${CF_DROPOUT_P:-0.1}               # CF无分类器丢弃概率
+    STRIDE=${STRIDE:-1}                             # 滑窗步长
+    MAX_WINDOWS=${MAX_WINDOWS:-}                    # 每episode最大窗口数(空=自适应)
+    OPTIMIZER_BATCH_SIZE=${OPTIMIZER_BATCH_SIZE:-4} # 优化器微批大小
     
-    # === 评测与CFG推理参数 ===
+    # === CFG推理控制(环境变量,runner会读取) ===
+    export PI0_ENABLE_DUAL=${PI0_ENABLE_DUAL:-1}    # 1=启用CFG双分支, 0=单分支兼容模式
+    export PI0_CFG_SCALE=${PI0_CFG_SCALE:-3.0}      # CFG引导权重w(对应论文guidance weight)
+    export PI0_IS_POSITIVE=${PI0_IS_POSITIVE:-}     # 强制分支:空=正常CFG,1=正分支,0=负分支
+    export PI0_N_VIDEO=${PI0_N_VIDEO:-0}            # 评测录像数量
+    
+    # === 评测参数 ===
     ROLLOUT_ENABLED=true                 # 是否启用评测
-
     ROLLOUT_INTERVAL=2                  # 评测间隔
-    export PI0_CFG_SCALE=2.0             # CFG推理强度 (1.0=无CFG, >1.0=更强条件)
-    export PI0_IS_POSITIVE=1             # 推理时条件 (0=负样本, 1=正样本)
     
     # === 环境与并行设置 ===
     NUM_PARALLEL_ENVS=2                  # 并行环境数
@@ -84,9 +87,9 @@ LOG_FILE="${LOG_DIR}/train_run_${TIMESTAMP}.log"
     
     echo "✅ 训练参数配置完成:"
     echo "   - 训练步数: $TRAINING_STEPS, 批次大小: $BATCH_SIZE"
-    echo "   - CFG模式: $CONDITION_MODE, α_uncond: $ALPHA_UNCOND"
-    echo "   - 推理CFG: scale=$PI0_CFG_SCALE, is_positive=$PI0_IS_POSITIVE"
-    echo "   - 评测: enabled=$ROLLOUT_ENABLED, interval=$ROLLOUT_INTERVAL"
+    echo "   - CFG训练: mode=$CONDITION_MODE, dropout=$CF_DROPOUT_P"
+    echo "   - CFG推理: scale=$PI0_CFG_SCALE, is_positive=$PI0_IS_POSITIVE, dual=$PI0_ENABLE_DUAL"
+    echo "   - 评测: enabled=$ROLLOUT_ENABLED, interval=$ROLLOUT_INTERVAL, video=$PI0_N_VIDEO"
     echo
 
     # --- 步骤 5: 准备并执行训练命令 ---
@@ -108,10 +111,10 @@ LOG_FILE="${LOG_DIR}/train_run_${TIMESTAMP}.log"
       algo.gradient_accumulation_steps=$GRADIENT_ACCUM_STEPS \
       algo.lr=$LEARNING_RATE \
       algo.policy.condition_mode=$CONDITION_MODE \
-      algo.alpha_uncond=$ALPHA_UNCOND \
+      algo.cf_dropout_p=$CF_DROPOUT_P \
       algo.stride=$STRIDE \
-      algo.max_windows_per_episode=$MAX_WINDOWS \
-      algo.rl_optimizer_factory.optimizer_batch_size=$OPTIMIZER_BATCH_SIZE \
+      $( [ -n "$MAX_WINDOWS" ] && echo "algo.max_windows_per_episode=$MAX_WINDOWS" ) \
+      algo.optimizer_batch_size=$OPTIMIZER_BATCH_SIZE \
       rollout.enabled=$ROLLOUT_ENABLED \
       rollout.interval=$ROLLOUT_INTERVAL \
       algo.num_parallel_envs=$NUM_PARALLEL_ENVS \

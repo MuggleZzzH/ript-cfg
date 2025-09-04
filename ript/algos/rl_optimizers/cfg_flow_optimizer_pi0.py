@@ -20,27 +20,23 @@ class CFGFlowOptimizerPI0:
         rollout_generator,
         reward_function,
         gradient_accumulation_steps: int = 1,
-        alpha_uncond: float = 0.0,
         cf_dropout_p: float = 0.1,
         stride: int = 1,
         max_windows_per_episode: int | None = None,
         optimizer_batch_size: int = 4,
         grad_norm_clip_model: float = 1.0,
         grad_norm_clip_header: float = 1.0,
-        use_binary_advantage: bool = True,  # 开关：True=二值化(类似IQL)，False=连续advantage
         **kwargs: Any,
     ) -> None:
         self.rollout_generator = rollout_generator
         self.reward_function = reward_function
         self.gradient_accumulation_steps = gradient_accumulation_steps
-        self.alpha_uncond = alpha_uncond
         self.cf_dropout_p = max(0.0, min(1.0, cf_dropout_p))
         self.stride = max(1, stride)
         self.max_windows_per_episode = max_windows_per_episode
         self.optimizer_batch_size = max(1, optimizer_batch_size)
         self.grad_norm_clip_model = grad_norm_clip_model
         self.grad_norm_clip_header = grad_norm_clip_header
-        self.use_binary_advantage = use_binary_advantage
 
     # ====== Public API ======
     def optimize(self, model, batch, optimizers, data_iterator=None, dataloader=None) -> Dict[str, float]:
@@ -111,41 +107,49 @@ class CFGFlowOptimizerPI0:
             noise = torch.randn(B, T, D_max, device=device, dtype=batch_data["state"].dtype)
             time = torch.rand(B, device=device, dtype=batch_data["state"].dtype) * 0.999 + 0.001
 
-            batch_pos = dict(batch_data)
-            batch_pos["noise"] = noise
-            batch_pos["time"] = time
-            batch_pos["is_positive"] = torch.ones(B, device=device, dtype=torch.long)
-            loss_pos, loss_dict_pos = self._forward_losses(model, batch_pos)
-            per_step_pos = loss_dict_pos["losses"].mean(dim=-1)
+            # 1) 窗口级优势标签：0/1
+            label = (sub_adv >= 0).to(device=device, dtype=torch.long)  # (B,)
 
-            batch_uncond = dict(batch_data)
-            batch_uncond["noise"] = noise
-            batch_uncond["time"] = time
-            # 使用“∅无条件”分支：不注入条件（对齐CFGRL的unc分支语义）
-            batch_uncond["is_positive"] = None
-            _, loss_dict_uncond = self._forward_losses(model, batch_uncond)
-            per_step_uncond = loss_dict_uncond["losses"].mean(dim=-1)
+            # 2) 按样本 Bernoulli(p=cf_dropout_p) 决定"是否变为无条件"
+            drop = torch.bernoulli(
+                torch.full((B,), self.cf_dropout_p, device=device, dtype=torch.float32)
+            ).to(torch.bool)  # True → 无条件(∅)
 
-            mask = (~batch_data["action_is_pad"]).float()
+            cond_idx = (~drop).nonzero(as_tuple=True)[0]
+            uncond_idx = drop.nonzero(as_tuple=True)[0]
 
-            # 1) 二值优势标签（窗口级）
-            is_good = (sub_adv >= 0).to(device=device, dtype=torch.float32)  # (B,)
-            # 2) CF Dropout 采样
-            do_cfg = torch.bernoulli(torch.full((B,), self.cf_dropout_p, device=device, dtype=torch.float32))  # (B,)
-            # 3) 门控：cond 分支在"好样本且未dropout"时被选择
-            m_cond = (is_good * (1.0 - do_cfg)).view(B, 1).expand_as(mask)    # (B, T)
-            m_unc  = (1.0 - m_cond)                                           # (B, T)
+            # 3) 准备 per-step 损失容器（按样本回填）
+            per_step = torch.zeros(B, T, device=device, dtype=torch.float32)
 
-            combined = m_cond * per_step_pos + m_unc * per_step_uncond
+            # 4) 条件子批（is_positive ∈ {0,1}），一次前向
+            if cond_idx.numel() > 0:
+                batch_cond = self._take_subset(batch_data, cond_idx)
+                batch_cond["noise"] = noise.index_select(0, cond_idx)
+                batch_cond["time"] = time.index_select(0, cond_idx)
+                batch_cond["is_positive"] = label.index_select(0, cond_idx)  # 关键：既可能是0也可能是1
+                _, loss_dict_cond = self._forward_losses(model, batch_cond)
+                per_step_cond = loss_dict_cond["losses"].mean(dim=-1)  # (B_cond, T)
+                per_step.index_copy_(0, cond_idx, per_step_cond)
+
+            # 5) 无条件子批（is_positive=None），一次前向
+            if uncond_idx.numel() > 0:
+                batch_unc = self._take_subset(batch_data, uncond_idx)
+                batch_unc["noise"] = noise.index_select(0, uncond_idx)
+                batch_unc["time"] = time.index_select(0, uncond_idx)
+                batch_unc["is_positive"] = None
+                _, loss_dict_unc = self._forward_losses(model, batch_unc)
+                per_step_unc = loss_dict_unc["losses"].mean(dim=-1)  # (B_unc, T)
+                per_step.index_copy_(0, uncond_idx, per_step_unc)
+
+            # 6) 步长归一化 + 聚合
+            mask = (~batch_data["action_is_pad"]).float()  # (B,T)
             valid_steps = mask.sum(dim=1).clamp_min(1.0)
-            window_losses = (combined * mask).sum(dim=1) / valid_steps
+            window_losses = (per_step * mask).sum(dim=1) / valid_steps
             sub_loss = window_losses.mean()
-            
-            # 保存变量供监控使用
-            if not hasattr(self, '_last_do_cfg'):
-                self._last_do_cfg = do_cfg
-                self._last_m_cond = m_cond
-                self._last_m_unc = m_unc
+
+            # 保存统计（供 metrics 使用）
+            self._last_drop = drop
+            self._last_label = label
 
             sub_loss_norm = sub_loss / max(1, self.gradient_accumulation_steps)
             with torch.amp.autocast('cuda', enabled=torch.cuda.is_available(), dtype=torch.bfloat16):
@@ -186,16 +190,23 @@ class CFGFlowOptimizerPI0:
 
         avg_loss = running_loss / max(1, (total_samples + self.optimizer_batch_size - 1) // self.optimizer_batch_size)
 
+        drop_rate = float(self._last_drop.float().mean().item()) if hasattr(self, "_last_drop") else 0.0
+        label_pos_rate = float((self._last_label == 1).float().mean().item()) if hasattr(self, "_last_label") else 0.0
+        label_neg_rate = 1.0 - label_pos_rate
+        cond_rate = 1.0 - drop_rate  # 条件分支占比
+        unc_rate = drop_rate         # 无条件分支占比
+
         metrics = {
             "training/fm_loss": float(avg_loss),
             "mean_scores": float(scores_t.mean().item()),
             "mean_advantage": float(adv.mean().item()),
             "non_zero_adv_ratio": float((adv != 0).float().mean().item()),
             "rollout_checked": float(samples_checked),
-            "training/cf_dropout_rate": float(torch.mean(self._last_do_cfg).item()) if hasattr(self, '_last_do_cfg') else 0.0,
-            "training/pos_rate": float(torch.mean((adv >= 0).float()).item()),
-            "training/branch_usage/cond": float(torch.mean(self._last_m_cond.float()).item()) if hasattr(self, '_last_m_cond') else 0.0,
-            "training/branch_usage/uncond": float(torch.mean(self._last_m_unc.float()).item()) if hasattr(self, '_last_m_unc') else 0.0,
+            "training/cf_dropout_rate": drop_rate,
+            "training/label_pos_rate": label_pos_rate,
+            "training/label_neg_rate": label_neg_rate,
+            "training/branch_usage/cond": cond_rate,
+            "training/branch_usage/uncond": unc_rate,
         }
         # DDP metrics reduce
         if dist.is_initialized():
@@ -207,6 +218,30 @@ class CFGFlowOptimizerPI0:
         return metrics
 
     # ====== Helpers ======
+    def _take_subset(self, batch: Dict[str, Any], idx: torch.Tensor) -> Dict[str, Any]:
+        """按样本维切片 batch（支持 image/state/action/action_is_pad/prompt）。
+        idx: 1D LongTensor 索引（device 与 batch 张量一致）"""
+        if idx.dtype != torch.long:
+            idx = idx.to(torch.long)
+        out: Dict[str, Any] = {}
+        # images
+        image = batch.get("image", {})
+        out_image = {}
+        for k, v in image.items():
+            # v: (B, C, H, W) uint8
+            out_image[k] = v.index_select(0, idx)
+        if out_image:
+            out["image"] = out_image
+        # state/action/action_is_pad
+        for k in ("state", "action", "action_is_pad"):
+            if k in batch and hasattr(batch[k], "index_select"):
+                out[k] = batch[k].index_select(0, idx)
+        # prompt: list[str]
+        if "prompt" in batch and isinstance(batch["prompt"], list):
+            ids = idx.detach().cpu().tolist()
+            out["prompt"] = [batch["prompt"][i] for i in ids]
+        return out
+
     def _episodes_to_window_samples(self, episodes: List[Dict[str, Any]], advantages: torch.Tensor, device: torch.device) -> Tuple[List[Dict[str, Any]], torch.Tensor]:
         samples: List[Dict[str, Any]] = []
         sample_adv: List[float] = []

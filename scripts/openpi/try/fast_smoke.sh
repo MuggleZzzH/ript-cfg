@@ -17,9 +17,11 @@ echo "[FAST TEST] Project root: $(pwd)"
 # --- Optional: conda (comment out if not needed) ---
 source /opt/conda/etc/profile.d/conda.sh && conda activate mix
 
-# --- Env tweaks ---
-export PI0_DISABLE_DUAL=0
-export PI0_N_VIDEO=1
+# --- CFG推理控制(环境变量) ---
+export PI0_ENABLE_DUAL=${PI0_ENABLE_DUAL:-1}    # 1=启用CFG双分支
+export PI0_CFG_SCALE=${PI0_CFG_SCALE:-2.0}      # CFG引导权重(快速测试用较小值)
+export PI0_IS_POSITIVE=${PI0_IS_POSITIVE:-}     # 空=正常CFG
+export PI0_N_VIDEO=${PI0_N_VIDEO:-1}            # 录像数量
 export PI0_VERBOSE=1
 export DEBUG_SAVE_PROCESSED=1
 export PI0_VIDEO_DIR=output/videos_pi0
@@ -47,13 +49,15 @@ WAIT_STEPS=${WAIT_STEPS:-10}
 STRIDE=${STRIDE:-10}
 MAX_WINDOWS=${MAX_WINDOWS:-5}
 OPTIMIZER_BATCH=${OPTIMIZER_BATCH:-4}
-USE_BINARY_ADV=${USE_BINARY_ADV:-true}  # true=二值化，false=连续advantage
+CF_DROPOUT_P=${CF_DROPOUT_P:-0.1}       # CF无分类器丢弃概率
 CONDITION_MODE=${CONDITION_MODE:-bias}
 ROLLOUT_ENABLED=${ROLLOUT_ENABLED:-true}
 EVAL_ONLY=${EVAL_ONLY:-true}
 
 echo "[FAST TEST] Params: steps=$TRAINING_STEPS, batch=$BATCH_SIZE, rloo=$RLOO_BATCH, rollouts_per_env=$ROLLOUTS_PER_ENV"
 echo "[FAST TEST] Episode: max_len=$MAX_EP_LEN, wait=$WAIT_STEPS; windows: stride=$STRIDE, max=$MAX_WINDOWS"
+echo "[FAST TEST] CFG: dropout=$CF_DROPOUT_P, mode=$CONDITION_MODE"
+echo "[FAST TEST] CFG推理: scale=$PI0_CFG_SCALE, is_positive=$PI0_IS_POSITIVE, dual=$PI0_ENABLE_DUAL"
 echo "[FAST TEST] Dynamic sampling=$ENABLE_DYNAMIC_SAMPLING, early_stop=$EARLY_STOP_PCT, rollout.enabled=$ROLLOUT_ENABLED"
 echo "[FAST TEST] Mode: eval_only=$EVAL_ONLY"
 
@@ -80,8 +84,8 @@ RANK=0 WORLD_SIZE=1 MASTER_ADDR=localhost MASTER_PORT=$MASTER_PORT python train_
   algo.env_runner.num_steps_wait=$WAIT_STEPS \
   algo.stride=$STRIDE \
   algo.max_windows_per_episode=$MAX_WINDOWS \
-  algo.rl_optimizer_factory.optimizer_batch_size=$OPTIMIZER_BATCH \
-  algo.rl_optimizer_factory.use_binary_advantage=$USE_BINARY_ADV \
+  algo.optimizer_batch_size=$OPTIMIZER_BATCH \
+  algo.cf_dropout_p=$CF_DROPOUT_P \
   algo.policy.condition_mode=$CONDITION_MODE \
   algo.eval_only=$EVAL_ONLY \
   rollout.enabled=$ROLLOUT_ENABLED \
