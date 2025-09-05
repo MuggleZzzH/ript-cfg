@@ -11,6 +11,14 @@ export PI0_CFG_SCALE=${PI0_CFG_SCALE:-3.0}
 export PI0_IS_POSITIVE=${PI0_IS_POSITIVE:-}
 export PI0_N_VIDEO=${PI0_N_VIDEO:-1}
 
+# Eval-time knobs
+ROLLOUT_ENABLED=${ROLLOUT_ENABLED:-true}
+ROLLOUT_INTERVAL=${ROLLOUT_INTERVAL:-10}
+NUM_ENVS=${NUM_ENVS:-1}
+ROLLOUTS_PER_ENV=${ROLLOUTS_PER_ENV:-16}
+MAX_EP_LEN=${MAX_EP_LEN:-300}
+WAIT_STEPS=${WAIT_STEPS:-10}
+
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 PROJECT_ROOT=$(realpath "$SCRIPT_DIR/../../..")
 cd "$PROJECT_ROOT"
@@ -27,12 +35,18 @@ PY
 )
 
 echo "[*] Eval PI0 CFG (goal, all tasks) | CKPT_DIR=$CKPT_DIR | CFG=$PI0_CFG_SCALE"
+echo "[*] Eval params: num_envs=$NUM_ENVS, rollouts_per_env=$ROLLOUTS_PER_ENV, max_ep_len=$MAX_EP_LEN, wait=$WAIT_STEPS"
 
 RANK=0 WORLD_SIZE=1 MASTER_ADDR=localhost MASTER_PORT=$MASTER_PORT \
 python train_ript_pi0.py \
   --config-name=train_rl_pi0_cfg_all_task_goal \
   algo.eval_only=true \
-  rollout.enabled=true \
+  rollout.enabled=$ROLLOUT_ENABLED \
+  rollout.interval=$ROLLOUT_INTERVAL \
+  algo.env_runner.num_parallel_envs=$NUM_ENVS \
+  algo.rollouts_per_env=$ROLLOUTS_PER_ENV \
+  algo.max_episode_length=$MAX_EP_LEN \
+  algo.env_runner.num_steps_wait=$WAIT_STEPS \
   +rollout.n_video=$PI0_N_VIDEO \
   logging.mode=disabled
 
