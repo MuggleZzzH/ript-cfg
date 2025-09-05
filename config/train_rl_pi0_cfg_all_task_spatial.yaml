@@ -1,0 +1,31 @@
+defaults:
+  - train_base_rl_pi0_cfg
+  - _self_
+  - override task: libero_spatial_rl
+  - override reward_function: success
+
+exp_name: pi0_cfg_all_task_spatial
+
+task:
+  # 置空表示使用该 benchmark 的全部任务
+  task_names_to_use: null
+
+algo:
+  # 适中开销的全任务训练参数（可按需覆盖）
+  rollouts_per_env: 16
+  num_parallel_envs: 1
+  # 若需要固定采样策略，可在运行时通过环境变量控制：
+  #   export PI0_ENABLE_DUAL=1; export PI0_CFG_SCALE=3.0; export PI0_IS_POSITIVE=
+
+training:
+  # 全任务训练步数（按算力可调）
+  n_steps: 50000
+  rollout_steps: 2000
+  log_interval: 100
+  save_interval: 5000
+
+rollout:
+  enabled: true
+  interval: 2000
+
+
