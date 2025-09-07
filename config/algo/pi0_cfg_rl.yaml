@@ -15,7 +15,7 @@ optimizer_factory:
   _target_: torch.optim.AdamW
   _partial_: true
   lr: ${algo.lr}
-  betas: [0.9, 0.95]
+  betas: [0.9, 0.999]
   weight_decay: ${algo.weight_decay}
 
 scheduler_factory:

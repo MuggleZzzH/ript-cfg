@@ -12,20 +12,19 @@ task:
 
 algo:
   # 适中开销的全任务训练参数（可按需覆盖）
-  rollouts_per_env: 16
-  num_parallel_envs: 1
+  rollouts_per_env: 50
+  num_parallel_envs: 10
   # 若需要固定采样策略，可在运行时通过环境变量控制：
   #   export PI0_ENABLE_DUAL=1; export PI0_CFG_SCALE=3.0; export PI0_IS_POSITIVE=
 
 training:
-  # 全任务训练步数（按算力可调）
-  n_steps: 50000
-  rollout_steps: 2000
-  log_interval: 100
-  save_interval: 5000
+  n_steps: 12
+  rollout_steps: 4
+  log_interval: 1
+  save_interval: 1
 
 rollout:
   enabled: true
-  interval: 2000
+  interval: 4
 
 

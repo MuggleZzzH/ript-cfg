@@ -23,7 +23,7 @@ train_dataloader:
   _target_: torch.utils.data.DataLoader
   batch_size: 4  # PI0专用：较小批大小
   shuffle: true
-  num_workers: 4  # PI0专用：较少worker
+  num_workers: 6  # PI0专用：较少worker
   persistent_workers: false
   pin_memory: true
   multiprocessing_context: fork
@@ -63,9 +63,9 @@ dataset:
 rollout:
   enabled: true
   interval: 10  # PI0专用：更频繁rollout
-  rollouts_per_env: 16  # PI0专用：较少rollout
-  num_parallel_envs: 1  # PI0专用：单环境
-  max_episode_length: 300  # PI0专用：匹配PI0算法配置
+  rollouts_per_env: 50  # PI0专用：较少rollout
+  num_parallel_envs: 10  # PI0专用：单环境
+  max_episode_length:   # PI0专用：匹配PI0算法配置
 
 task:
   task_names_to_use: 
