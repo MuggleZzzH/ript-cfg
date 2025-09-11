@@ -250,35 +250,27 @@ class CFGFlowOptimizerPI0:
             # Prefer normalized relative actions if provided
             # episode['actions_normalized'] is expected as per openvla runner; fallback to compute from absolute if needed
             if 'actions_normalized' in ep and len(ep['actions_normalized']) > 0:
-                # Our stub uses chunk-level list [ (T,7) ]
-                if isinstance(ep['actions_normalized'][0], list):
+                # 原实现仅取第一个 chunk，导致 T_seq == H 只能产生 1 个窗口
+                # 这里将所有 chunk 沿时间拼接，得到整条轨迹动作序列
+                try:
+                    if isinstance(ep['actions_normalized'][0], list) or isinstance(ep['actions_normalized'][0], np.ndarray):
+                        chunks = [np.asarray(c, dtype=np.float32) for c in ep['actions_normalized']]
+                        act_norm = np.concatenate(chunks, axis=0)
+                    else:
+                        act_norm = np.asarray(ep['actions_normalized'], dtype=np.float32)
+                except Exception:
+                    # 结构异常时退回到第一段，至少保证采样不崩溃
                     act_norm = np.asarray(ep['actions_normalized'][0], dtype=np.float32)
-                else:
-                    act_norm = np.asarray(ep['actions_normalized'], dtype=np.float32)
             else:
                 # Fallback: derive relative normalized actions from absolute if stats and states available (not covered here)
                 continue
 
-            # observations: take the starting observation for the window; our stub stores [[obs]]
-            obs_list = ep.get('observations', [[]])
-            if len(obs_list) == 0:
-                continue
-            # observations 通常为按时间步的列表；每个时间步是并行环境数量的列表
-            # 兼容以下两种结构：
-            # 1) [ {obs_dict_t0_env0}, {obs_dict_t1_env0}, ... ]
-            # 2) [ [obs_dict_t0_env0, obs_dict_t0_env1, ...], [obs_dict_t1_env0, ...], ... ]
-            first = obs_list[0]
-            if isinstance(first, dict):
-                obs0 = first
-            elif isinstance(first, list) and len(first) > 0 and isinstance(first[0], dict):
-                obs0 = first[0]
-            else:
-                continue
-            # valid mask
-            valid = ep.get('valid', [[True] * len(act_norm)])
-            valid_seq = np.asarray(valid[0], dtype=bool)
+            # 优先使用逐时刻观测序列对齐窗口起点
+            obs_seq = ep.get('obs_seq', None)
 
-            T_seq = act_norm.shape[0]
+            T_seq = int(act_norm.shape[0])
+            if T_seq <= 0:
+                continue
             max_windows = self.max_windows_per_episode or max(1, (T_seq - H) // self.stride + 1)
             count = 0
             for start in range(0, max(0, T_seq - H + 1), self.stride):
@@ -293,8 +285,21 @@ class CFGFlowOptimizerPI0:
                 action_is_pad = np.ones((H,), dtype=bool)
                 action_is_pad[: min(H, T_seq - start)] = False
 
-                # build sample
+                # 构造窗口起点观测：优先使用 obs_seq[start]
                 try:
+                    if isinstance(obs_seq, list) and len(obs_seq) > start:
+                        obs0 = obs_seq[start]
+                    else:
+                        # 兼容旧结构：从 observations 中取第一帧
+                        obs_list = ep.get('observations', [[]])
+                        first = obs_list[0] if len(obs_list) > 0 else {}
+                        if isinstance(first, dict):
+                            obs0 = first
+                        elif isinstance(first, list) and len(first) > 0 and isinstance(first[0], dict):
+                            obs0 = first[0]
+                        else:
+                            raise RuntimeError('no valid obs for window start')
+
                     img_base = obs0['image']['base_0_rgb']
                     img_wrist = obs0['image'].get('left_wrist_0_rgb', img_base)
                     state_np = np.asarray(obs0['state'], dtype=np.float32)
@@ -304,6 +309,7 @@ class CFGFlowOptimizerPI0:
                     else:
                         prompt_out = [str(prompt_list)]
                 except Exception:
+                    # 若观测异常则跳过该窗口
                     continue
 
                 sample = {
