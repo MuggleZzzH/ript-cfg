@@ -56,6 +56,10 @@ LOG_FILE="${LOG_DIR}/train_run_${TIMESTAMP}.log"
     export HF_ENDPOINT=https://hf-mirror.com
     export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     
+    # === 日志后端设置 ===
+    export LOG_BACKEND=swanlab # <--- 设置日志后端为 swanlab
+    # export SWANLAB_MODE=offline # <--- 如果需要离线模式，取消此行注释
+
     # === 关键训练参数配置 ===
     TRAINING_STEPS=2                    # 训练步数
     BATCH_SIZE=2                         # 批次大小  
@@ -121,7 +125,7 @@ LOG_FILE="${LOG_DIR}/train_run_${TIMESTAMP}.log"
       algo.rollouts_per_env=$ROLLOUTS_PER_ENV \
       algo.max_episode_length=$MAX_EPISODE_LENGTH \
       task=libero_spatial_rl \
-      logging.mode=disabled
+      # logging.mode=disabled # <--- 已删除此行以启用日志记录
 
     echo
     echo "========================================================"

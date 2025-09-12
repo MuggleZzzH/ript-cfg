@@ -127,31 +127,76 @@ def main(cfg):
 
         # 选择日志后端：wandb | swanlab | none
         import os as _os
-        backend = str(_os.environ.get('LOG_BACKEND', 'wandb')).lower()
+        # 优先使用 Hydra 配置 logging.backend，其次回退到环境变量 LOG_BACKEND，最后默认 wandb
+        _cfg_backend = ''
+        try:
+            _cfg_backend = str(getattr(cfg.logging, 'backend', '')).lower()
+        except Exception:
+            _cfg_backend = ''
+        backend = _cfg_backend or str(_os.environ.get('LOG_BACKEND', 'wandb')).lower()
         logger = Logger(train_cfg.log_interval, backend=backend)
 
-        try:
-            if backend == 'swanlab':
-                import swanlab as _lb
-                _mode = str(_os.environ.get('SWANLAB_MODE', '')).lower()
-                _exp = _lb.init(
-                    project=str(getattr(cfg, 'logging_folder', 'ript')),
-                    experiment_name=str(experiment_name),
-                    config=OmegaConf.to_container(cfg, resolve=True),
-                    mode=('offline' if _mode == 'offline' else 'online'),
+        if cfg.logging.mode != 'disabled':
+            try:
+                if backend == 'wandb':
+                    import wandb as _lb
+                    _exp = _lb.init(
+                        project=str(getattr(cfg, 'logging_folder', 'ript')),
+                        config=OmegaConf.to_container(cfg, resolve=True),
+                        name=str(experiment_name),
+                    )
+                elif backend == 'swanlab':
+                    import swanlab as _lb
+                    _mode = str(_os.environ.get('SWANLAB_MODE', '')).lower()
+                    # 规范/清理环境变量，避免库读取到未知值报错
+                    if _mode and _mode not in ('offline', 'cloud'):
+                        # 兼容历史用法：online → cloud；其他非法值直接删除
+                        if _mode == 'online':
+                            _os.environ['SWANLAB_MODE'] = 'cloud'
+                        else:
+                            try:
+                                del _os.environ['SWANLAB_MODE']
+                            except Exception:
+                                pass
+                    _init_kwargs = dict(
+                        project=str(getattr(cfg, 'logging_folder', 'ript')),
+                        experiment_name=str(experiment_name),
+                        config=OmegaConf.to_container(cfg, resolve=True),
+                    )
+                    # 仅在明确为 offline 时传递 mode；cloud/默认不传
+                    _mode = str(_os.environ.get('SWANLAB_MODE', '')).lower()
+                    if _mode == 'offline':
+                        _init_kwargs['mode'] = 'offline'
+                    _exp = _lb.init(**_init_kwargs)
+                else:
+                    # 未知后端或显式 none：跳过初始化
+                    pass
+            except Exception as e:
+                _exp = None
+                _backend_version = "N/A"
+                if backend == 'swanlab' and '_lb' in locals():
+                    try:
+                        _backend_version = _lb.__version__
+                    except Exception:
+                        pass
+                _msg = (
+                    f"[RANK {rank}] Warning: logger backend init failed.\n"
+                    f"  - Backend: {backend}\n"
+                    f"  - Version: {_backend_version}\n"
+                    f"  - Error: {e}\n"
+                    "  - TIP: Check API keys, network, and env vars (e.g., SWANLAB_MODE, SWANLAB_API_KEY)."
                 )
-            elif backend == 'wandb':
-                import wandb as _lb
-                _lb.init(
-                    dir=experiment_dir,
-                    name=experiment_name,
-                    config=OmegaConf.to_container(cfg, resolve=True),
-                    **cfg.logging
-                )
-        except Exception as _e:
-            print(f"[RANK {rank}] Warning: logger backend init failed: {getattr(_e, 'args', _e)}")
-    else:
-        logger = None
+                print(_msg, flush=True)
+
+        if cfg.logging.mode == 'disabled':
+            print(f"[RANK {rank}] Warning: Logging is disabled via 'logging.mode=disabled'. No data will be sent to any backend.", flush=True)
+
+
+    # setup logger
+    logger = Logger(
+        train_cfg.log_interval,
+        backend=backend,
+    )
 
     # Ensure variable exists even in eval-only mode to avoid UnboundLocalError on cleanup
     rollout_generator = None

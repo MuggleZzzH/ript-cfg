@@ -24,17 +24,17 @@ RLOO_BATCH=${RLOO_BATCH:-8}
 ROLLOUTS_PER_ENV=${ROLLOUTS_PER_ENV:-50}
 NUM_ENVS=${NUM_ENVS:-5}
 EARLY_STOP_PCT=${EARLY_STOP_PCT:-1.0}
-ENABLE_DYNAMIC_SAMPLING=${ENABLE_DYNAMIC_SAMPLING:-false}
-MAX_EP_LEN=${MAX_EP_LEN:-}
+ENABLE_DYNAMIC_SAMPLING=${ENABLE_DYNAMIC_SAMPLING:-true}
+MAX_EP_LEN=${MAX_EP_LEN:-null}
 WAIT_STEPS=${WAIT_STEPS:-10}
 STRIDE=${STRIDE:-1}
 MAX_WINDOWS=${MAX_WINDOWS:-}
-OPTIMIZER_BATCH=${OPTIMIZER_BATCH:-4}
+OPTIMIZER_BATCH=${OPTIMIZER_BATCH:-20}
 CF_DROPOUT_P=${CF_DROPOUT_P:-0.1}
 CONDITION_MODE=${CONDITION_MODE:-token}
 ROLLOUT_ENABLED=${ROLLOUT_ENABLED:-true}
 ROLLOUT_INTERVAL=${ROLLOUT_INTERVAL:-4}
-NORM_STATS=${NORM_STATS:-"norm_stats_path: /zhaohan/ZJH/openpi_pytorch/lerobot_dataset/norm_stats.json"}
+NORM_STATS=${NORM_STATS:-"/zhaohan/ZJH/openpi_pytorch/lerobot_dataset/norm_stats.json"}
 PRETRAIN_PATH=${PRETRAIN_PATH:-"/zhaohan/ZJH/openpi_pytorch/checkpoints/pi0_base_pytorch"}
 
 # 动态生成实验名称
@@ -92,7 +92,7 @@ python train_ript_pi0.py \
   rollout.enabled=$ROLLOUT_ENABLED \
   rollout.interval=$ROLLOUT_INTERVAL \
   +rollout.n_video=$PI0_N_VIDEO \
-  logging.mode=disabled
+
 
 echo "[*] Done."
 

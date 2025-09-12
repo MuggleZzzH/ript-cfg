@@ -30,7 +30,7 @@ train_dataloader:
   drop_last: true
 
 training:
-  gradient_accumulation_steps: 1
+  gradient_accumulation_steps: 4
   n_epochs: 50  # PI0专用：较少epoch
   save_interval: 5  # PI0专用：更频繁保存
   log_interval: 50  # PI0专用：更频繁日志

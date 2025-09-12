@@ -38,6 +38,11 @@ class CFGFlowOptimizerPI0:
         self.grad_norm_clip_model = grad_norm_clip_model
         self.grad_norm_clip_header = grad_norm_clip_header
 
+        # Tracking counters for visibility
+        self._cum_num_windows: int = 0
+        self._cum_num_episodes: int = 0
+        self._total_opt_steps: int = 0
+
     # ====== Public API ======
     def optimize(self, model, batch, optimizers, data_iterator=None, dataloader=None) -> Dict[str, float]:
         device = getattr(model, "device", torch.device("cuda" if torch.cuda.is_available() else "cpu"))
@@ -80,7 +85,8 @@ class CFGFlowOptimizerPI0:
 
         # 4.5) Global shuffle across window samples (keep per-sample advantage aligned)
         try:
-            perm = torch.randperm(len(samples), device=device)
+            # Use CPU for permutation to avoid keeping large indices tensor on GPU
+            perm = torch.randperm(len(samples), device='cpu')
             samples = [samples[i] for i in perm.tolist()]
             if isinstance(sample_adv, torch.Tensor) and sample_adv.numel() == len(perm):
                 sample_adv = sample_adv[perm]
@@ -187,6 +193,8 @@ class CFGFlowOptimizerPI0:
                     opt.step()
                     opt.zero_grad()
                 accum_count = 0
+                # track optimizer steps for visibility
+                self._total_opt_steps = getattr(self, "_total_opt_steps", 0) + 1
 
         avg_loss = running_loss / max(1, (total_samples + self.optimizer_batch_size - 1) // self.optimizer_batch_size)
 
@@ -208,6 +216,16 @@ class CFGFlowOptimizerPI0:
             "training/branch_usage/cond": cond_rate,
             "training/branch_usage/uncond": unc_rate,
         }
+        # 统计信息：窗口样本与episode数量
+        try:
+            num_eps = float(len(episodes))
+        except Exception:
+            num_eps = 0.0
+        metrics["training/num_window_samples_step"] = float(total_samples)
+        metrics["training/num_episodes_step"] = num_eps
+        metrics["training/avg_windows_per_episode"] = (
+            float(total_samples) / (num_eps if num_eps > 0 else 1.0)
+        )
         # DDP metrics reduce
         if dist.is_initialized():
             for k, v in metrics.items():
@@ -327,8 +345,9 @@ class CFGFlowOptimizerPI0:
                 count += 1
 
         if len(samples) == 0:
-            return [], torch.empty(0, device=device)
-        return samples, torch.tensor(sample_adv, device=device, dtype=torch.float32)
+            return [], torch.empty(0, device='cpu')
+        # Keep advantages on CPU; move per-microbatch to GPU on demand
+        return samples, torch.tensor(sample_adv, device='cpu', dtype=torch.float32)
 
     def _collate_samples(self, samples: List[Dict[str, Any]], device: torch.device) -> Dict[str, Any]:
         # images to NCHW uint8

@@ -18,6 +18,10 @@ echo "[FAST TEST] Project root: $(pwd)"
 source /opt/conda/etc/profile.d/conda.sh && conda activate mix
 
 # --- CFG推理控制(环境变量) ---
+# after conda activate mix
+export LOG_BACKEND=swanlab
+# 如果是自托管，还需要：
+# export SWANLAB_HOST="http://your-host:port"
 export PI0_ENABLE_DUAL=${PI0_ENABLE_DUAL:-1}    # 1=启用CFG双分支
 export PI0_CFG_SCALE=${PI0_CFG_SCALE:-1.0}      # CFG引导权重(快速测试用较小值)
 export PI0_IS_POSITIVE=${PI0_IS_POSITIVE:-}     # 空=正常CFG
@@ -38,7 +42,7 @@ PRETRAIN_PATH=${PRETRAIN_PATH:-/zhaohan/ZJH/openpi_pytorch/checkpoints/pi0_liber
 
 # --- Speed knobs (fast defaults) ---
 TRAINING_STEPS=${TRAINING_STEPS:-2}             # total steps; cut=1 will stop after 1 loop
-BATCH_SIZE=${BATCH_SIZE:-8}
+BATCH_SIZE=${BATCH_SIZE:-4}
 RLOO_BATCH=${RLOO_BATCH:-2}
 ROLLOUTS_PER_ENV=${ROLLOUTS_PER_ENV:-2}
 NUM_ENVS=${NUM_ENVS:-2}
@@ -46,9 +50,9 @@ EARLY_STOP_PCT=${EARLY_STOP_PCT:-1}
 ENABLE_DYNAMIC_SAMPLING=${ENABLE_DYNAMIC_SAMPLING:-false}
 MAX_EP_LEN=${MAX_EP_LEN:-100}
 WAIT_STEPS=${WAIT_STEPS:-10}
-STRIDE=${STRIDE:-10}
-MAX_WINDOWS=${MAX_WINDOWS:-5}
-OPTIMIZER_BATCH=${OPTIMIZER_BATCH:-16}
+STRIDE=${STRIDE:-1}
+MAX_WINDOWS=${MAX_WINDOWS:-}
+OPTIMIZER_BATCH=${OPTIMIZER_BATCH:-20}
 CF_DROPOUT_P=${CF_DROPOUT_P:-0.1}       # CF无分类器丢弃概率
 CONDITION_MODE=${CONDITION_MODE:-token}
 ROLLOUT_ENABLED=${ROLLOUT_ENABLED:-false}
@@ -89,8 +93,8 @@ RANK=0 WORLD_SIZE=1 MASTER_ADDR=localhost MASTER_PORT=$MASTER_PORT python train_
   algo.policy.condition_mode=$CONDITION_MODE \
   algo.eval_only=$EVAL_ONLY \
   rollout.enabled=$ROLLOUT_ENABLED \
+  +logging.backend=swanlab \
   +rollout.n_video=1 \
-  logging.mode=disabled
 
 EXIT_CODE=$?
 if [ $EXIT_CODE -eq 0 ]; then

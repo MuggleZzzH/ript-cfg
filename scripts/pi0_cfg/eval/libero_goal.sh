@@ -48,7 +48,7 @@ python train_ript_pi0.py \
   algo.max_episode_length=$MAX_EP_LEN \
   algo.env_runner.num_steps_wait=$WAIT_STEPS \
   +rollout.n_video=$PI0_N_VIDEO \
-  logging.mode=disabled
+
 
 echo "[*] Done."
 
