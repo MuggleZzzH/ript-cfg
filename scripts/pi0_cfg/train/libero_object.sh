@@ -3,7 +3,7 @@ set -eo pipefail
 
 # Env backend: swanlab|wandb|none (default wandb)
 export LOG_BACKEND=${LOG_BACKEND:-swanlab}
-export SWANLAB_MODE=${SWANLAB_MODE:-online}
+# export SWANLAB_MODE=${SWANLAB_MODE:-online}  # 注释掉，默认在线模式
 
 # CFG runtime controls
 export PI0_ENABLE_DUAL=${PI0_ENABLE_DUAL:-1}
@@ -43,9 +43,17 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 PROJECT_ROOT=$(realpath "$SCRIPT_DIR/../../..")
 cd "$PROJECT_ROOT"
 
+# 尝试多个可能的conda初始化路径
 if [ -f /opt/conda/etc/profile.d/conda.sh ]; then
   source /opt/conda/etc/profile.d/conda.sh
+elif [ -f ~/anaconda3/etc/profile.d/conda.sh ]; then
+  source ~/anaconda3/etc/profile.d/conda.sh
+elif [ -f ~/miniconda3/etc/profile.d/conda.sh ]; then
+  source ~/miniconda3/etc/profile.d/conda.sh
 fi
+
+# 设置默认环境为mix，可通过CONDA_ENV环境变量覆盖
+CONDA_ENV=${CONDA_ENV:-mix}
 [ -n "$CONDA_ENV" ] && conda activate "$CONDA_ENV" || true
 
 MASTER_PORT=$(python - << 'PY'

@@ -23,6 +23,20 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 PROJECT_ROOT=$(realpath "$SCRIPT_DIR/../../..")
 cd "$PROJECT_ROOT"
 
+# Optional: conda
+# 尝试多个可能的conda初始化路径
+if [ -f /opt/conda/etc/profile.d/conda.sh ]; then
+  source /opt/conda/etc/profile.d/conda.sh
+elif [ -f ~/anaconda3/etc/profile.d/conda.sh ]; then
+  source ~/anaconda3/etc/profile.d/conda.sh
+elif [ -f ~/miniconda3/etc/profile.d/conda.sh ]; then
+  source ~/miniconda3/etc/profile.d/conda.sh
+fi
+
+# 设置默认环境为mix，可通过CONDA_ENV环境变量覆盖
+CONDA_ENV=${CONDA_ENV:-mix}
+[ -n "$CONDA_ENV" ] && conda activate "$CONDA_ENV" || true
+
 if [ -z "$CKPT_DIR" ]; then
   echo "[!] Please set CKPT_DIR to a trained checkpoint directory (contains pi0_policy.pt)"
   exit 1
