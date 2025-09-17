@@ -35,6 +35,7 @@ export PYTHONPATH=$PYTHONPATH:"$PROJECT_ROOT/LIBERO":"$PROJECT_ROOT"
 export HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export PI0_DISABLE_INIT_STATES=0  # 快速测试：禁用初始状态设置
+export MUJOCO_GL=egl
 
 # --- Paths (edit if needed) ---
 NORM_STATS=${NORM_STATS:-/zhaohan/ZJH/openpi_pytorch/lerobot_dataset/norm_stats.json}
@@ -43,22 +44,22 @@ PRETRAIN_PATH=${PRETRAIN_PATH:-/zhaohan/ZJH/openpi_pytorch/checkpoints/pi0_liber
 # --- Speed knobs (fast defaults) ---
 TRAINING_STEPS=${TRAINING_STEPS:-2}             # total steps; cut=1 will stop after 1 loop
 BATCH_SIZE=${BATCH_SIZE:-4}
-RLOO_BATCH=${RLOO_BATCH:-2}
-ROLLOUTS_PER_ENV=${ROLLOUTS_PER_ENV:-2}
-NUM_ENVS=${NUM_ENVS:-2}
+RLOO_BATCH=${RLOO_BATCH:-4}
+ROLLOUTS_PER_ENV=${ROLLOUTS_PER_ENV:-4}
+NUM_ENVS=${NUM_ENVS:-4}
 EARLY_STOP_PCT=${EARLY_STOP_PCT:-1}
 ENABLE_DYNAMIC_SAMPLING=${ENABLE_DYNAMIC_SAMPLING:-false}
 MAX_EP_LEN=${MAX_EP_LEN:-100}
 WAIT_STEPS=${WAIT_STEPS:-10}
 STRIDE=${STRIDE:-1}
 MAX_WINDOWS=${MAX_WINDOWS:-}
-OPTIMIZER_BATCH=${OPTIMIZER_BATCH:-20}
+OPTIMIZER_BATCH=${OPTIMIZER_BATCH:-8}
 CF_DROPOUT_P=${CF_DROPOUT_P:-0.1}       # CF无分类器丢弃概率
 CONDITION_MODE=${CONDITION_MODE:-token}
 ROLLOUT_ENABLED=${ROLLOUT_ENABLED:-false}
 EVAL_ONLY=${EVAL_ONLY:-false}
-DDP_WRAP=${DDP_WRAP:-false}
-NUM_GPUS=${NUM_GPUS:-1}
+DDP_WRAP=${DDP_WRAP:-true}
+NUM_GPUS=${NUM_GPUS:-2}
 
 if [ "$NUM_GPUS" -gt 1 ] && [ "$DDP_WRAP" != "true" ]; then
   echo "[FAST TEST] NUM_GPUS>1 detected; enabling DDP wrap"
@@ -100,10 +101,11 @@ COMMON_ARGS=(
   algo.cf_dropout_p=$CF_DROPOUT_P
   algo.policy.condition_mode=$CONDITION_MODE
   algo.eval_only=$EVAL_ONLY
-  algo.policy.ddp_wrap=$DDP_WRAP
+  +algo.policy.ddp_wrap=$DDP_WRAP
   rollout.enabled=$ROLLOUT_ENABLED
   +logging.backend=swanlab
   +rollout.n_video=1
+  'task.task_names_to_use=["pick_up_the_black_bowl_next_to_the_plate_and_place_it_on_the_plate","pick_up_the_black_bowl_on_the_stove_and_place_it_on_the_plate","pick_up_the_black_bowl_next_to_the_cookie_box_and_place_it_on_the_plate","pick_up_the_black_bowl_on_the_wooden_cabinet_and_place_it_on_the_plate"]'
 )
 
 if [ "$NUM_GPUS" -gt 1 ]; then

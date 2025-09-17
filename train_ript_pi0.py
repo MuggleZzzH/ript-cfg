@@ -61,7 +61,8 @@ def main(cfg):
 
     rank = dist.get_rank()
     world_size = dist.get_world_size()
-    device_id = rank % torch.cuda.device_count()
+    # Prefer LOCAL_RANK provided by torchrun to select the local GPU ordinal
+    device_id = int(os.environ.get('LOCAL_RANK', rank % torch.cuda.device_count()))
     device = f'cuda:{device_id}'
     torch.cuda.set_device(device)
 
@@ -120,6 +121,13 @@ def main(cfg):
 
     experiment_dir, experiment_name = utils.get_experiment_dir(cfg)
     os.makedirs(experiment_dir, exist_ok=True)
+
+    # Resolve logging backend for all ranks (avoid UnboundLocalError on non-zero ranks)
+    try:
+        _cfg_backend_global = str(getattr(cfg.logging, 'backend', '')).lower()
+    except Exception:
+        _cfg_backend_global = ''
+    backend = _cfg_backend_global or str(os.environ.get('LOG_BACKEND', 'wandb')).lower()
 
     if rank == 0:
         print('Saving to:', experiment_dir)
@@ -224,8 +232,6 @@ def main(cfg):
         )
 
         num_parallel_envs = cfg.algo.env_runner.num_parallel_envs if hasattr(cfg.algo.env_runner, 'num_parallel_envs') else cfg.algo.num_parallel_envs
-        if len(local_train_tasks) > 1:
-            num_parallel_envs = 1
         env_runner = instantiate(cfg.algo.env_runner, task_names_to_use=local_train_tasks, num_parallel_envs=num_parallel_envs)
 
         if rank == 0:
