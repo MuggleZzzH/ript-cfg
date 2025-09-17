@@ -57,13 +57,21 @@ CF_DROPOUT_P=${CF_DROPOUT_P:-0.1}       # CF无分类器丢弃概率
 CONDITION_MODE=${CONDITION_MODE:-token}
 ROLLOUT_ENABLED=${ROLLOUT_ENABLED:-false}
 EVAL_ONLY=${EVAL_ONLY:-false}
+DDP_WRAP=${DDP_WRAP:-false}
+NUM_GPUS=${NUM_GPUS:-1}
+
+if [ "$NUM_GPUS" -gt 1 ] && [ "$DDP_WRAP" != "true" ]; then
+  echo "[FAST TEST] NUM_GPUS>1 detected; enabling DDP wrap"
+  DDP_WRAP=true
+fi
 
 echo "[FAST TEST] Params: steps=$TRAINING_STEPS, batch=$BATCH_SIZE, rloo=$RLOO_BATCH, rollouts_per_env=$ROLLOUTS_PER_ENV"
 echo "[FAST TEST] Episode: max_len=$MAX_EP_LEN, wait=$WAIT_STEPS; windows: stride=$STRIDE, max=$MAX_WINDOWS"
 echo "[FAST TEST] CFG: dropout=$CF_DROPOUT_P, mode=$CONDITION_MODE"
 echo "[FAST TEST] CFG推理: scale=$PI0_CFG_SCALE, is_positive=$PI0_IS_POSITIVE, dual=$PI0_ENABLE_DUAL"
 echo "[FAST TEST] Dynamic sampling=$ENABLE_DYNAMIC_SAMPLING, early_stop=$EARLY_STOP_PCT, rollout.enabled=$ROLLOUT_ENABLED"
-echo "[FAST TEST] Mode: eval_only=$EVAL_ONLY"
+echo "[FAST TEST] Mode: eval_only=$EVAL_ONLY, ddp_wrap=$DDP_WRAP"
+echo "[FAST TEST] GPUs: num_gpus=$NUM_GPUS"
 
 # --- Distributed single-process wiring ---
 MASTER_PORT=$(python - << 'PY'
@@ -72,31 +80,44 @@ s=socket.socket(); s.bind(('',0)); print(s.getsockname()[1]); s.close()
 PY
 )
 
-RANK=0 WORLD_SIZE=1 MASTER_ADDR=localhost MASTER_PORT=$MASTER_PORT python train_ript_pi0.py \
-  --config-name=train_base_rl_pi0_cfg \
-  algo.norm_stats_path=$NORM_STATS \
-  algo.policy.pretrained_path=$PRETRAIN_PATH \
-  training.n_steps=$TRAINING_STEPS \
-  training.cut=1 \
-  train_dataloader.batch_size=$BATCH_SIZE \
-  algo.rloo_batch_size=$RLOO_BATCH \
-  algo.rollouts_per_env=$ROLLOUTS_PER_ENV \
-  algo.env_runner.num_parallel_envs=$NUM_ENVS \
-  algo.early_stop_percentage=$EARLY_STOP_PCT \
-  algo.enable_dynamic_sampling=$ENABLE_DYNAMIC_SAMPLING \
-  algo.max_episode_length=$MAX_EP_LEN \
-  algo.env_runner.num_steps_wait=$WAIT_STEPS \
-  algo.stride=$STRIDE \
-  algo.max_windows_per_episode=$MAX_WINDOWS \
-  algo.optimizer_batch_size=$OPTIMIZER_BATCH \
-  algo.cf_dropout_p=$CF_DROPOUT_P \
-  algo.policy.condition_mode=$CONDITION_MODE \
-  algo.eval_only=$EVAL_ONLY \
-  rollout.enabled=$ROLLOUT_ENABLED \
-  +logging.backend=swanlab \
-  +rollout.n_video=1 \
+COMMON_ARGS=(
+  --config-name=train_base_rl_pi0_cfg
+  algo.norm_stats_path=$NORM_STATS
+  algo.policy.pretrained_path=$PRETRAIN_PATH
+  training.n_steps=$TRAINING_STEPS
+  training.cut=1
+  train_dataloader.batch_size=$BATCH_SIZE
+  algo.rloo_batch_size=$RLOO_BATCH
+  algo.rollouts_per_env=$ROLLOUTS_PER_ENV
+  algo.env_runner.num_parallel_envs=$NUM_ENVS
+  algo.early_stop_percentage=$EARLY_STOP_PCT
+  algo.enable_dynamic_sampling=$ENABLE_DYNAMIC_SAMPLING
+  algo.max_episode_length=$MAX_EP_LEN
+  algo.env_runner.num_steps_wait=$WAIT_STEPS
+  algo.stride=$STRIDE
+  algo.max_windows_per_episode=$MAX_WINDOWS
+  algo.optimizer_batch_size=$OPTIMIZER_BATCH
+  algo.cf_dropout_p=$CF_DROPOUT_P
+  algo.policy.condition_mode=$CONDITION_MODE
+  algo.eval_only=$EVAL_ONLY
+  algo.policy.ddp_wrap=$DDP_WRAP
+  rollout.enabled=$ROLLOUT_ENABLED
+  +logging.backend=swanlab
+  +rollout.n_video=1
+)
 
-EXIT_CODE=$?
+if [ "$NUM_GPUS" -gt 1 ]; then
+  echo "[FAST TEST] Launching torchrun with $NUM_GPUS GPUs (master_port=$MASTER_PORT)"
+  torchrun --standalone --nnodes=1 --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT \
+    train_ript_pi0.py "${COMMON_ARGS[@]}"
+  EXIT_CODE=$?
+else
+  echo "[FAST TEST] Launching python with single GPU (master_port=$MASTER_PORT)"
+  MASTER_ADDR=localhost MASTER_PORT=$MASTER_PORT RANK=0 WORLD_SIZE=1 \
+    python train_ript_pi0.py "${COMMON_ARGS[@]}"
+  EXIT_CODE=$?
+fi
+
 if [ $EXIT_CODE -eq 0 ]; then
   echo "[FAST TEST] ✅ Completed"
 else

@@ -351,7 +351,8 @@ def main(cfg):
             try:
                 # If model exposes inner module with state_dict
                 target = model.model if hasattr(model, 'model') else model
-                torch.save(target.state_dict(), os.path.join(ckpt_dir, 'pi0_policy.pt'))
+                to_save = target.module if hasattr(target, 'module') else target
+                torch.save(to_save.state_dict(), os.path.join(ckpt_dir, 'pi0_policy.pt'))
                 print(f"[RANK {rank}] Saved PI0 weights to {ckpt_dir}")
             except Exception as e:
                 print(f"[RANK {rank}] Warning: failed to save PI0 weights: {e}")

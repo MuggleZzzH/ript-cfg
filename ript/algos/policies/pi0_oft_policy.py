@@ -20,7 +20,9 @@ import os
 import sys
 
 import torch
+import torch.distributed as dist
 from torch import nn
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 
 def _ensure_openpi_on_path(workspace_root: Optional[str] = None) -> None:
@@ -127,6 +129,12 @@ class PI0_OFT_Policy:
         if len(header_params) > 0:
             self.trainable_params["header"] = header_params
 
+        self.ddp_wrapped = False
+        if ddp_wrap and dist.is_initialized():
+            self.model = DDP(self.model, device_ids=[device_id])
+            self.ddp_wrapped = True
+            self.model.eval()
+
         # 3) Simple cfg holder for compatibility
         class _Cfg:
             def __init__(self) -> None:
@@ -137,8 +145,6 @@ class PI0_OFT_Policy:
 
         # 4) Load normalization stats (state[:8], action[:7])
         self._load_norm_stats(self.norm_stats_path)
-
-        # 5) Optionally DDP-wrapped by external script. Here we keep plain module.
 
     # ===== Normalization =====
     def _load_norm_stats(self, norm_stats_path: Optional[str]) -> None:
@@ -165,6 +171,10 @@ class PI0_OFT_Policy:
         except Exception as e:
             # 使用默认单位归一化
             print(f"[PI0_OFT_Policy] Warning: Failed to load norm_stats from {norm_stats_path}: {e}")
+
+    @property
+    def core_model(self):
+        return self.model.module if hasattr(self.model, "module") else self.model
 
     # ===== Inference =====
     @torch.inference_mode()
@@ -234,7 +244,7 @@ class PI0_OFT_Policy:
             start_ts.record()
 
         # PI0 前向：得到 (B, 50, D)，截取前7维为动作维度
-        actions = self.model.select_action(batch, cfg_scale=cfg_scale, is_positive_infer=is_positive_infer)
+        actions = self.core_model.select_action(batch, cfg_scale=cfg_scale, is_positive_infer=is_positive_infer)
 
         if end_ts is not None:
             end_ts.record()
