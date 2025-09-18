@@ -72,6 +72,11 @@ def main(cfg):
     os.environ['CUDA_VISIBLE_DEVICES'] = device_number
     print('device_id', device_id)
     print(f'rank {rank} CUDA_VISIBLE_DEVICES: {os.environ["CUDA_VISIBLE_DEVICES"]}')
+    
+    # Set EGL to use the same device as CUDA_VISIBLE_DEVICES (satisfies robosuite assertion)
+    os.environ['MUJOCO_GL'] = 'egl'
+    os.environ['MUJOCO_EGL_DEVICE_ID'] = device_number
+    print(f'rank {rank} MUJOCO_EGL_DEVICE_ID: {device_number} (matches CUDA_VISIBLE_DEVICES)')
 
     all_tasks = cfg.task.task_names_to_use
     if all_tasks is None:

@@ -381,6 +381,7 @@ class CFGFlowOptimizerPI0:
         # Call underlying PI0Policy forward to get per-step-per-dim losses in loss_dict['losses']
         # 用混合精度降低显存
         if torch.cuda.is_available():
+            current_device = torch.cuda.current_device()
             with torch.amp.autocast('cuda', dtype=torch.bfloat16):
                 out = model.model.forward(batch)
         else:

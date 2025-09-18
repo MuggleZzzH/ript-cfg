@@ -142,7 +142,12 @@ class Pi0LiberoRunner:
         bddl_file = f"{bddl}/{task.problem_folder}/{task.bddl_file}"
 
         def _env_factory():
-            return OffScreenRenderEnv(bddl_file_name=bddl_file, camera_heights=256, camera_widths=256)
+            # Ensure subprocess inherits correct EGL settings
+            import os
+            os.environ['MUJOCO_GL'] = 'egl'
+            os.environ['MUJOCO_EGL_DEVICE_ID'] = '0'
+            # Use device 0 for all subprocesses since each process only sees one GPU after CUDA_VISIBLE_DEVICES rewrite
+            return OffScreenRenderEnv(bddl_file_name=bddl_file, camera_heights=256, camera_widths=256, render_gpu_device_id=0)
 
         env_num = min(self.num_parallel_envs, self.rollouts_per_env)
         env = SubprocVectorEnv([_env_factory for _ in range(env_num)])
