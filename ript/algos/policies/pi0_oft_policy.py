@@ -131,7 +131,7 @@ class PI0_OFT_Policy:
 
         self.ddp_wrapped = False
         if ddp_wrap and dist.is_initialized():
-            self.model = DDP(self.model, device_ids=[device_id])
+            self.model = DDP(self.model, device_ids=[device_id], find_unused_parameters=True)
             self.ddp_wrapped = True
             self.model.eval()
 
