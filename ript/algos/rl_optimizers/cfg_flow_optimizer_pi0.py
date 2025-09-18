@@ -9,6 +9,8 @@ Implements:
 
 from typing import Any, Dict, List, Tuple
 
+from contextlib import nullcontext
+
 import torch
 import torch.distributed as dist
 import numpy as np
@@ -380,12 +382,16 @@ class CFGFlowOptimizerPI0:
     def _forward_losses(self, model, batch: Dict[str, Any]) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         # Call underlying PI0Policy forward to get per-step-per-dim losses in loss_dict['losses']
         # 用混合精度降低显存
+        module = model.model
+        sync_ctx = module.no_sync() if hasattr(module, 'no_sync') else nullcontext()
         if torch.cuda.is_available():
             current_device = torch.cuda.current_device()
-            with torch.amp.autocast('cuda', dtype=torch.bfloat16):
-                out = model.model.forward(batch)
+            with sync_ctx:
+                with torch.amp.autocast('cuda', dtype=torch.bfloat16):
+                    out = module.forward(batch)
         else:
-            out = model.model.forward(batch)
+            with sync_ctx:
+                out = module.forward(batch)
         if isinstance(out, tuple):
             loss, loss_dict = out
         else:
