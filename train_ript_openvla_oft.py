@@ -72,17 +72,22 @@ def main(cfg):
     # 获取分布式相关信息
     rank = dist.get_rank()  # 当前进程编号
     world_size = dist.get_world_size()  # 总进程数
-    device_id = rank % torch.cuda.device_count()  # 分配GPU编号
+    local_rank_env = os.environ.get('LOCAL_RANK')
+    device_id = int(local_rank_env) if local_rank_env is not None else rank % torch.cuda.device_count()
     device = f'cuda:{device_id}'
     torch.cuda.set_device(device)  # 设置当前进程使用的GPU
 
     # 打印CUDA可见设备信息，便于调试
     cuda_visible_devices = os.environ.get('CUDA_VISIBLE_DEVICES', '')
-    print('CUDA_VISIBLE_DEVICES:', cuda_visible_devices.split(','))
+    print('CUDA_VISIBLE_DEVICES:', cuda_visible_devices.split(',') if cuda_visible_devices else [''])
     device_number = cuda_visible_devices.split(',')[device_id] if cuda_visible_devices else str(device_id)
-    os.environ['CUDA_VISIBLE_DEVICES'] = device_number
-    print('device_id', device_id)
-    print(f'rank {rank} CUDA_VISIBLE_DEVICES: {os.environ["CUDA_VISIBLE_DEVICES"]}')
+    if cuda_visible_devices and local_rank_env is None:
+        os.environ['CUDA_VISIBLE_DEVICES'] = device_number
+        print('device_id', device_id)
+        print(f'rank {rank} CUDA_VISIBLE_DEVICES: {os.environ["CUDA_VISIBLE_DEVICES"]}')
+    else:
+        print('device_id', device_id)
+        print(f'rank {rank} using device {device}')
 
     # 按GPU划分任务
     all_tasks = cfg.task.task_names_to_use
