@@ -53,13 +53,17 @@ MAX_EP_LEN=${MAX_EP_LEN:-100}
 WAIT_STEPS=${WAIT_STEPS:-10}
 STRIDE=${STRIDE:-1}
 MAX_WINDOWS=${MAX_WINDOWS:-}
-OPTIMIZER_BATCH=${OPTIMIZER_BATCH:-8}
+OPTIMIZER_BATCH=${OPTIMIZER_BATCH:-20}
 CF_DROPOUT_P=${CF_DROPOUT_P:-0.1}       # CF无分类器丢弃概率
 CONDITION_MODE=${CONDITION_MODE:-token}
-ROLLOUT_ENABLED=${ROLLOUT_ENABLED:-false}
+ROLLOUT_ENABLED=${ROLLOUT_ENABLED:-true}
 EVAL_ONLY=${EVAL_ONLY:-false}
 DDP_WRAP=${DDP_WRAP:-true}
-NUM_GPUS=${NUM_GPUS:-2}
+NUM_GPUS=${NUM_GPUS:-3}
+
+# CPU线程优化设置（根据你的CPU核心数调整）
+# 建议设置为 CPU核心数 / GPU数量，避免线程竞争
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 
 if [ "$NUM_GPUS" -gt 1 ] && [ "$DDP_WRAP" != "true" ]; then
   echo "[FAST TEST] NUM_GPUS>1 detected; enabling DDP wrap"
@@ -86,7 +90,6 @@ COMMON_ARGS=(
   algo.norm_stats_path=$NORM_STATS
   algo.policy.pretrained_path=$PRETRAIN_PATH
   training.n_steps=$TRAINING_STEPS
-  training.cut=1
   train_dataloader.batch_size=$BATCH_SIZE
   algo.rloo_batch_size=$RLOO_BATCH
   algo.rollouts_per_env=$ROLLOUTS_PER_ENV
@@ -115,8 +118,7 @@ if [ "$NUM_GPUS" -gt 1 ]; then
   EXIT_CODE=$?
 else
   echo "[FAST TEST] Launching python with single GPU (master_port=$MASTER_PORT)"
-  MASTER_ADDR=localhost MASTER_PORT=$MASTER_PORT RANK=0 WORLD_SIZE=1 \
-    python train_ript_pi0.py "${COMMON_ARGS[@]}"
+  MASTER_ADDR=localhost MASTER_PORT=$MASTER_PORT RANK=0 WORLD_SIZE=1 python train_ript_pi0.py "${COMMON_ARGS[@]}"
   EXIT_CODE=$?
 fi
 

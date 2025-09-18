@@ -1,4 +1,13 @@
 import os
+# Per-rank GPU visibility and EGL setup (must be set before any GPU-related imports)
+_local_rank_env = os.environ.get("LOCAL_RANK")
+if _local_rank_env is not None and _local_rank_env != "":
+    # Restrict each process to see only its own GPU; EGL maps it as device 0
+    os.environ["CUDA_VISIBLE_DEVICES"] = _local_rank_env
+os.environ.setdefault("MUJOCO_GL", "egl")
+os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
+os.environ.setdefault("EGL_DEVICE_ID", "0")
+os.environ.setdefault("EGL_VISIBLE_DEVICES", "0")
 os.environ["NCCL_TIMEOUT"] = "108000"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 # 修复tokenizers并行化警告
@@ -61,8 +70,16 @@ def main(cfg):
 
     rank = dist.get_rank()
     world_size = dist.get_world_size()
-    # Prefer LOCAL_RANK provided by torchrun to select the local GPU ordinal
-    device_id = int(os.environ.get('LOCAL_RANK', rank % torch.cuda.device_count()))
+    # Prefer LOCAL_RANK; if per-rank visibility reduced to a single GPU, use device 0
+    _lr = os.environ.get('LOCAL_RANK')
+    if _lr is not None:
+        _visible = os.environ.get('CUDA_VISIBLE_DEVICES', '')
+        if _visible and len(_visible.split(',')) == 1:
+            device_id = 0
+        else:
+            device_id = int(_lr)
+    else:
+        device_id = rank % torch.cuda.device_count()
     device = f'cuda:{device_id}'
     torch.cuda.set_device(device)
 
@@ -360,7 +377,7 @@ def main(cfg):
             for scheduler in schedulers:
                 scheduler.step()
 
-        if rank == 0 and global_step > 0 and global_step % save_interval_steps == 0:
+        if rank == 0 and (global_step + 1) % save_interval_steps == 0:
             # Generic model save (best-effort)
             ckpt_dir = os.path.join(experiment_dir, f"pi0_step_{global_step:06d}")
             os.makedirs(ckpt_dir, exist_ok=True)
